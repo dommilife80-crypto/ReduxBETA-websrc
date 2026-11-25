@@ -549,7 +549,7 @@ class XHR_v4dBj2ayea9a5_Inst {
       this.lastSentMouseX = mx;
       this.lastSentMouseY = my;
       const splitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
-      const packets = [VoidGBYH.sendMouse(mx, my)];
+      const packets = [];
       for (let stage = 0; stage < stages; stage++) {
         packets.push(splitPacket);
       }
@@ -606,6 +606,8 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     this.name = this.isPrimary ? $("#name-box").val() : $("#name-box2").val();
     this.spectate = false;
+    this.mouseFrozen = false;
+    this._ejectHeld = false;
     this.currentServerName = NghauAMea965_VAL.name;
     if (this.isPrimary) {
       $("#currentServer nord-icon").hide();
@@ -1096,12 +1098,6 @@ class XHR_v4dBj2ayea9a5_Inst {
   }
   sendPacket(AxisLockThreshold) {
     if (this.isConnected()) {
-      const view = new DataView(AxisLockThreshold);
-      const bytes = [];
-      for (let i = 0; i < Math.min(AxisLockThreshold.byteLength, 20); i++) {
-        bytes.push(view.getUint8(i).toString(16).padStart(2, '0'));
-      }
-      
       this.socket.send(AxisLockThreshold);
     }
   }
@@ -5008,9 +5004,13 @@ async_D8l9NKg = undefined;
 PMulimorea994_str = undefined;
 function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
   if (Kb5zM5ea951_neq) {
-    dNwVcfi$ea9d8_type(AxisLockThreshold[0]);
-    AxisLockThreshold[1].preventDefault();
-    return;
+    if (!jQueryLzNd.isOpen("mainModal")) {
+      Kb5zM5ea951_neq = false;
+    } else {
+      dNwVcfi$ea9d8_type(AxisLockThreshold[0]);
+      AxisLockThreshold[1].preventDefault();
+      return;
+    }
   }
   const minimapSmoothFactor = document.activeElement;
   if (
@@ -5019,16 +5019,26 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       minimapSmoothFactor.tagName === "NORD-INPUT" ||
       minimapSmoothFactor.isContentEditable)
   ) {
-    if (
-      AxisLockThreshold[0] === 13 &&
-      minimapSmoothFactor.id === "chat-input"
-    ) {
-      in_Lv7rr7N($(minimapSmoothFactor).val());
-      setTimeout(() => {
-        return $(minimapSmoothFactor).blur();
-      }, 2);
+    const visibleRects =
+      typeof minimapSmoothFactor.getClientRects === "function"
+        ? minimapSmoothFactor.getClientRects().length
+        : 0;
+    if (visibleRects === 0) {
+      if (typeof minimapSmoothFactor.blur === "function") {
+        minimapSmoothFactor.blur();
+      }
+    } else {
+      if (
+        AxisLockThreshold[0] === 13 &&
+        minimapSmoothFactor.id === "chat-input"
+      ) {
+        in_Lv7rr7N($(minimapSmoothFactor).val());
+        setTimeout(() => {
+          return $(minimapSmoothFactor).blur();
+        }, 2);
+      }
+      return;
     }
-    return;
   }
   if (AxisLockThreshold[0] === 27) {
     NaN_semFS17(
@@ -9197,7 +9207,7 @@ function HandlerR0b5TLt$() {
     AxisLockThreshold();
   } else {
     Logger.info("Game loop started with setInterval (FPS uncapped).");
-    HandlerbspL = setInterval(True$wzFjm$ea9f2_TYPE, 4);
+    HandlerbspL = setInterval(True$wzFjm$ea9f2_TYPE, 8);
   }
 }
 async function True$wzFjm$ea9f2_TYPE() {
