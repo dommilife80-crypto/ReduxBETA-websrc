@@ -498,16 +498,32 @@ class XHR_v4dBj2ayea9a5_Inst {
       this.mouseFrozen &&
       Number.isFinite(this.lastSentMouseX) &&
       Number.isFinite(this.lastSentMouseY);
-    const mx = frozen
+    let mx = frozen
       ? this.lastSentMouseX
       : Number.isFinite(this.calculatedMouseX)
       ? this.calculatedMouseX
       : this.lastSentMouseX ?? 0;
-    const my = frozen
+    let my = frozen
       ? this.lastSentMouseY
       : Number.isFinite(this.calculatedMouseY)
       ? this.calculatedMouseY
       : this.lastSentMouseY ?? 0;
+    const lineState = VJjDr._getActivePlayerState(this);
+    if (
+      !frozen &&
+      lineState &&
+      typeof lineState.state === "string" &&
+      lineState.state.startsWith("active-")
+    ) {
+      if (this.lineSplitAxis === "x" && Number.isFinite(this.lineSplitAnchorY)) {
+        my = this.lineSplitAnchorY;
+      } else if (
+        this.lineSplitAxis === "y" &&
+        Number.isFinite(this.lineSplitAnchorX)
+      ) {
+        mx = this.lineSplitAnchorX;
+      }
+    }
     return [mx, my];
   }
   sendMouseToCursor() {
@@ -519,14 +535,20 @@ class XHR_v4dBj2ayea9a5_Inst {
     this.lastSentMouseY = my;
     this.sendPacket(VoidGBYH.sendMouse(mx, my));
   }
+  _releaseKeyboardFocus() {
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && typeof focused.blur === "function") {
+      focused.blur();
+    }
+  }
   sendSplit(...AxisLockThreshold) {
     AxisLockThreshold.length = 1;
     return new Promise((minimapSmoothFactor) => {
       const stages = Math.max(1, Math.min(8, Number(AxisLockThreshold[0]) || 1));
       const [mx, my] = this._cursorTarget();
-      if (!this.enabled) {
-        this.sendMouseToCursor();
-      }
+      this.lastSentMouseX = mx;
+      this.lastSentMouseY = my;
+      this.sendPacket(VoidGBYH.sendMouse(mx, my));
       this.sendPacket(VoidGBYH.sendSplitPacket(mx, my, stages));
       const rtt = Number.isFinite(this.rtt) ? this.rtt : 50;
       setTimeout(() => {
@@ -561,6 +583,7 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     Ctx_aylk4EOu();
     jQueryLzNd.close("mainModal");
+    this._releaseKeyboardFocus();
     if (this.isPrimary) {
       Proto$L05X_ea9c6_sub();
     }
@@ -621,6 +644,7 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     Ctx_aylk4EOu();
     jQueryLzNd.close("mainModal");
+    this._releaseKeyboardFocus();
     if (this.isPrimary) {
       
       Proto$L05X_ea9c6_sub();
@@ -839,6 +863,11 @@ class XHR_v4dBj2ayea9a5_Inst {
     this.score = 0;
     this.customGameMap = null;
     this.currentServer = null;
+    this.mouseFrozen = false;
+    this._ejectHeld = false;
+    this._appliedName = undefined;
+    this._pingSentAt = undefined;
+    this._lastMultiAction = 0;
     VJjDr.stopLinesplit(this);
     this.clearParty();
     VJjDr.handlePlayerDeathOrDisconnect();
@@ -4301,6 +4330,12 @@ const VJjDr = {
       drawMinimapInterval.state === "activating" ||
       drawMinimapInterval.state === "locking"
     ) {
+      if (
+        performance.now() - (drawMinimapInterval.stateSince || 0) > 500
+      ) {
+        this.stopLinesplit(minimapSmoothFactor);
+        return false;
+      }
       drawMinimapInterval.pendingSplitCount += AxisLockThreshold;
       return true;
     } else if (drawMinimapInterval.state.startsWith("active-")) {
@@ -4372,6 +4407,7 @@ const VJjDr = {
       AxisLockThreshold.lineSplitAnchorY = AxisLockThreshold.centerY;
     }
     minimapSmoothFactor.state = "activating";
+    minimapSmoothFactor.stateSince = performance.now();
     AxisLockThreshold.lineSplitAxis = null;
     minimapSmoothFactor.mouseFreezeBackup = AxisLockThreshold.mouseFrozen;
     if (this.stateIndicator) {
@@ -4391,6 +4427,7 @@ const VJjDr = {
     minimapSmoothFactor.packetTimer = setTimeout(() => {
       if (minimapSmoothFactor.state === "activating") {
         minimapSmoothFactor.state = "locking";
+        minimapSmoothFactor.stateSince = performance.now();
         if (this.stateIndicator) {
           this.stateIndicator
             .clear()
@@ -5024,11 +5061,10 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       const messageColors =
         combinedCameraDistanceThreshold > combinedZoomFocusStrength;
       const trickSplit = (trickTarget) => {
-        if (!trickTarget) {
+        if (!trickTarget || typeof trickTarget.sendSplit !== "function") {
           return;
         }
-        const [trickX, trickY] = trickTarget._cursorTarget();
-        trickTarget.sendPacket(VoidGBYH.sendSplitPacket(trickX, trickY, 1));
+        trickTarget.sendSplit(1);
       };
       for (let MESSAGE_TYPES = 0; MESSAGE_TYPES < 8; MESSAGE_TYPES++) {
         setTimeout(() => {
@@ -5054,13 +5090,10 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
           ? Str_NmyJ4kX
           : If$sEyzqKbhea93f_Exec;
       const infernoSplit = (infernoTarget) => {
-        if (!infernoTarget) {
+        if (!infernoTarget || typeof infernoTarget.sendSplit !== "function") {
           return;
         }
-        const [infernoX, infernoY] = infernoTarget._cursorTarget();
-        infernoTarget.sendPacket(
-          VoidGBYH.sendSplitPacket(infernoX, infernoY, 1)
-        );
+        infernoTarget.sendSplit(1);
       };
       for (let MESSAGE_TYPES = 0; MESSAGE_TYPES < 4; MESSAGE_TYPES++) {
         setTimeout(() => {
@@ -9824,6 +9857,8 @@ function ForKgjVzrQea9fc_Status(...AxisLockThreshold) {
     stalePlayer.lastSentMouseX = undefined;
     stalePlayer.lastSentMouseY = undefined;
   }
+  VJjDr.stopLinesplit(If$sEyzqKbhea93f_Exec);
+  VJjDr.stopLinesplit(Str_NmyJ4kX);
   if (If$sEyzqKbhea93f_Exec.isConnected() && Str_NmyJ4kX.isConnected()) {
     if (If$sEyzqKbhea93f_Exec.enabled && !Str_NmyJ4kX.enabled) {
       If$sEyzqKbhea93f_Exec.enabled = false;
