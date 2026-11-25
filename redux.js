@@ -404,6 +404,17 @@ const vZpklf = 850;
 window.isGameLoopFrozenByPing = false;
 window.DATA_FREEZE_THRESHOLD_BYTES = 102400;
 window.isGameLoopFrozenByData = false;
+window.__rxPerf = window.__rxPerf || {
+  fps: 0,
+  loopFrames: 0,
+  loopLastTs: 0,
+  loopFpsTs: 0,
+  maxGap: 0,
+  logTs: 0,
+  lastSplitMs: -1,
+  splitApplied: 0,
+  splitMissed: 0,
+};
 CLASS_3Ft = false;
 let yield_j0ltb_ea9a1_eq = 0;
 let do_Hz8uZ47Tea9a2_Id = false;
@@ -548,6 +559,8 @@ class XHR_v4dBj2ayea9a5_Inst {
       const [mx, my] = this._cursorTarget();
       this.lastSentMouseX = mx;
       this.lastSentMouseY = my;
+      this._splitSentAt = performance.now();
+      this._splitCellsBefore = this.myCells.size;
       const splitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
       const packets = [];
       for (let stage = 0; stage < stages; stage++) {
@@ -1608,6 +1621,19 @@ class XHR_v4dBj2ayea9a5_Inst {
               break;
           }
         }
+      }
+    }
+    if (this._splitSentAt) {
+      if (this.myCells.size > this._splitCellsBefore) {
+        window.__rxPerf &&
+          (window.__rxPerf.lastSplitMs = Math.round(
+            performance.now() - this._splitSentAt
+          ));
+        window.__rxPerf && (window.__rxPerf.splitApplied = (window.__rxPerf.splitApplied || 0) + 1);
+        this._splitSentAt = 0;
+      } else if (performance.now() - this._splitSentAt > 3000) {
+        window.__rxPerf && (window.__rxPerf.splitMissed = (window.__rxPerf.splitMissed || 0) + 1);
+        this._splitSentAt = 0;
       }
     }
     this.updateScorePanel();
@@ -9239,6 +9265,46 @@ async function True$wzFjm$ea9f2_TYPE() {
     return;
   }
   const AxisLockThreshold = performance.now();
+  const rxPerf = window.__rxPerf;
+  if (rxPerf) {
+    rxPerf.loopFrames++;
+    if (rxPerf.loopLastTs) {
+      const rxGap = AxisLockThreshold - rxPerf.loopLastTs;
+      if (rxGap > rxPerf.maxGap) {
+        rxPerf.maxGap = Math.round(rxGap);
+      }
+    }
+    rxPerf.loopLastTs = AxisLockThreshold;
+    if (!rxPerf.loopFpsTs) {
+      rxPerf.loopFpsTs = AxisLockThreshold;
+    }
+    if (AxisLockThreshold - rxPerf.loopFpsTs >= 1000) {
+      rxPerf.fps = Math.round(
+        (rxPerf.loopFrames * 1000) / (AxisLockThreshold - rxPerf.loopFpsTs)
+      );
+      rxPerf.loopFrames = 0;
+      rxPerf.loopFpsTs = AxisLockThreshold;
+    }
+    if (AxisLockThreshold - rxPerf.logTs > 10000) {
+      rxPerf.logTs = AxisLockThreshold;
+      console.log(
+        "[rx-perf] fps=" +
+          rxPerf.fps +
+          " maxGap=" +
+          rxPerf.maxGap +
+          "ms splitMs=" +
+          rxPerf.lastSplitMs +
+          " applied=" +
+          rxPerf.splitApplied +
+          " missed=" +
+          rxPerf.splitMissed +
+          " heapMB=" +
+          (performance.memory
+            ? Math.round(performance.memory.usedJSHeapSize / 1048576)
+            : "?")
+      );
+    }
+  }
   const minimapSmoothFactor = AxisLockThreshold - JcVea978_neq;
   const baseCellSize = 250;
   let combinedCameraDistanceThreshold = false;
