@@ -1106,6 +1106,22 @@ class XHR_v4dBj2ayea9a5_Inst {
       return;
     }
     if (typeof this.socket.sendBatch === "function") {
+      if (!window.__rxSplitDiag) {
+        window.__rxSplitDiag = true;
+        try {
+          const win = this.socket._frameWindow
+            ? this.socket._frameWindow()
+            : null;
+          console.log(
+            "[Gota Redux] split send path: " +
+              (win && typeof win.__rxBridgeSendBatch === "function"
+                ? "direct"
+                : "postMessage") +
+              ", packets: " +
+              packets.length
+          );
+        } catch (_) {}
+      }
       this.socket.sendBatch(packets);
       return;
     }
@@ -5559,7 +5575,9 @@ class BridgeSocket {
         }
       } catch (_) {}
     }
-    window.api.send("bridge:send-batch", { clientId: this.clientId, list });
+    for (const packet of list) {
+      this.send(packet);
+    }
   }
   close() {
     if (this.readyState >= 2) return;
