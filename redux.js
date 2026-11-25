@@ -549,7 +549,9 @@ class XHR_v4dBj2ayea9a5_Inst {
       this.lastSentMouseX = mx;
       this.lastSentMouseY = my;
       this.sendPacket(VoidGBYH.sendMouse(mx, my));
-      this.sendPacket(VoidGBYH.sendSplitPacket(mx, my, stages));
+      for (let stage = 0; stage < stages; stage++) {
+        this.sendPacket(VoidGBYH.sendSplitPacket(mx, my, 1));
+      }
       const rtt = Number.isFinite(this.rtt) ? this.rtt : 50;
       setTimeout(() => {
         minimapSmoothFactor();
@@ -10437,9 +10439,11 @@ function If_yEAw_eaa03_Res(...AxisLockThreshold) {
   drawMinimapInterval.lastSentMouseX = mx;
   drawMinimapInterval.lastSentMouseY = my;
   drawMinimapInterval.sendPacket(VoidGBYH.sendMouse(mx, my));
-  drawMinimapInterval.sendPacket(
-    VoidGBYH.sendSplitPacket(mx, my, stages)
-  );
+  for (let stage = 0; stage < stages; stage++) {
+    drawMinimapInterval.sendPacket(
+      VoidGBYH.sendSplitPacket(mx, my, 1)
+    );
+  }
   const rtt = Number.isFinite(drawMinimapInterval.rtt)
     ? drawMinimapInterval.rtt
     : 50;
