@@ -548,10 +548,12 @@ class XHR_v4dBj2ayea9a5_Inst {
       const [mx, my] = this._cursorTarget();
       this.lastSentMouseX = mx;
       this.lastSentMouseY = my;
-      this.sendPacket(VoidGBYH.sendMouse(mx, my));
+      const splitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
+      const packets = [VoidGBYH.sendMouse(mx, my)];
       for (let stage = 0; stage < stages; stage++) {
-        this.sendPacket(VoidGBYH.sendSplitPacket(mx, my, 1));
+        packets.push(splitPacket);
       }
+      this.sendPackets(packets);
       const rtt = Number.isFinite(this.rtt) ? this.rtt : 50;
       setTimeout(() => {
         minimapSmoothFactor();
@@ -1101,6 +1103,18 @@ class XHR_v4dBj2ayea9a5_Inst {
       }
       
       this.socket.send(AxisLockThreshold);
+    }
+  }
+  sendPackets(packets) {
+    if (!this.isConnected() || !packets || packets.length === 0) {
+      return;
+    }
+    if (typeof this.socket.sendBatch === "function") {
+      this.socket.sendBatch(packets);
+      return;
+    }
+    for (const packet of packets) {
+      this.sendPacket(packet);
     }
   }
   sendPing() {
@@ -5412,6 +5426,8 @@ if (!window.__rxWebShimInit) {
         else startConnect();
       } else if (channel === "bridge:send") {
         __rxSendToSlot(cid, { type: "send", data: data.data });
+      } else if (channel === "bridge:send-batch") {
+        __rxSendToSlot(cid, { type: "send-batch", data: data.list });
       } else if (channel === "bridge:disconnect") {
         slot.pendingConnect = null;
         __rxDiscardSlotFrame(cid, 400);
@@ -5491,6 +5507,10 @@ class BridgeSocket {
       nick: String(nick || ""),
     });
   }
+  _frameWindow() {
+    const frame = document.getElementById("rx-bridge-frame-" + this.clientId);
+    return frame ? frame.contentWindow : null;
+  }
   send(data) {
     if (this.readyState !== 1) return;
     const u8 =
@@ -5499,7 +5519,37 @@ class BridgeSocket {
         : ArrayBuffer.isView(data)
         ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
         : new Uint8Array(data);
+    const win = this._frameWindow();
+    if (win && typeof win.__rxBridgeSend === "function") {
+      try {
+        if (win.__rxBridgeSend(u8)) {
+          return;
+        }
+      } catch (_) {}
+    }
     window.api.send("bridge:send", { clientId: this.clientId, data: u8 });
+  }
+  sendBatch(packets) {
+    if (this.readyState !== 1 || !packets || packets.length === 0) return;
+    const list = [];
+    for (const data of packets) {
+      list.push(
+        data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : ArrayBuffer.isView(data)
+          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+          : new Uint8Array(data)
+      );
+    }
+    const win = this._frameWindow();
+    if (win && typeof win.__rxBridgeSendBatch === "function") {
+      try {
+        if (win.__rxBridgeSendBatch(list)) {
+          return;
+        }
+      } catch (_) {}
+    }
+    window.api.send("bridge:send-batch", { clientId: this.clientId, list });
   }
   close() {
     if (this.readyState >= 2) return;
@@ -10438,12 +10488,12 @@ function If_yEAw_eaa03_Res(...AxisLockThreshold) {
   CLASS_3Ft = true;
   drawMinimapInterval.lastSentMouseX = mx;
   drawMinimapInterval.lastSentMouseY = my;
-  drawMinimapInterval.sendPacket(VoidGBYH.sendMouse(mx, my));
+  const burstSplitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
+  const burstPackets = [VoidGBYH.sendMouse(mx, my)];
   for (let stage = 0; stage < stages; stage++) {
-    drawMinimapInterval.sendPacket(
-      VoidGBYH.sendSplitPacket(mx, my, 1)
-    );
+    burstPackets.push(burstSplitPacket);
   }
+  drawMinimapInterval.sendPackets(burstPackets);
   const rtt = Number.isFinite(drawMinimapInterval.rtt)
     ? drawMinimapInterval.rtt
     : 50;
