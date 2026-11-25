@@ -3395,6 +3395,9 @@ class RETURN_FUB_ea9a9_Opt {
         ? Mao5huZea938_run.rTextOutlines
         : 9;
     }
+    if (this.textureCache.size > 500) {
+      this.textureCache.clear();
+    }
     this.rendererText.text = AxisLockThreshold.name.includes("🤖")
       ? "🤖"
       : AxisLockThreshold.name;
@@ -9358,7 +9361,8 @@ async function True$wzFjm$ea9f2_TYPE() {
   const capitalize = bXFgW$Qq.pivot.x + writeAscii + 50;
   const findServerByName = bXFgW$Qq.pivot.y - writeUtf16 - 50;
   const formatAliveTime = bXFgW$Qq.pivot.y + writeUtf16 + 50;
-  for (const formatExperience of jQuery_hn$0_2t_ea9b2_sub.allCells) {
+  for (const rxCellEntry of jQuery_hn$0_2t_ea9b2_sub.cells.values()) {
+    const formatExperience = rxCellEntry.cell;
     formatExperience.interpolateState(
       combinedInterpSpeed,
       combinedCameraDistanceThreshold
