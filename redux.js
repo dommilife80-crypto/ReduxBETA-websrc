@@ -313,7 +313,9 @@ const El_adcGQ944ea99d_Cb = new Map([
   [54, "6"],
   [55, "7"],
   [56, "8"],
-  [59, "9"],
+  [57, "9"],
+  [59, ";"],
+  [61, "="],
   [65, "A"],
   [66, "B"],
   [67, "C"],
@@ -371,6 +373,7 @@ const El_adcGQ944ea99d_Cb = new Map([
   [123, "F12"],
   [144, "Num Lock"],
   [145, "Scroll Lock"],
+  [173, "-"],
   [186, ";"],
   [187, "="],
   [188, ","],
@@ -404,17 +407,6 @@ const vZpklf = 850;
 window.isGameLoopFrozenByPing = false;
 window.DATA_FREEZE_THRESHOLD_BYTES = 102400;
 window.isGameLoopFrozenByData = false;
-window.__rxPerf = window.__rxPerf || {
-  fps: 0,
-  loopFrames: 0,
-  loopLastTs: 0,
-  loopFpsTs: 0,
-  maxGap: 0,
-  logTs: 0,
-  lastSplitMs: -1,
-  splitApplied: 0,
-  splitMissed: 0,
-};
 CLASS_3Ft = false;
 let yield_j0ltb_ea9a1_eq = 0;
 let do_Hz8uZ47Tea9a2_Id = false;
@@ -483,8 +475,10 @@ class XHR_v4dBj2ayea9a5_Inst {
     this.customGameMap = null;
     this.accountListeners = {};
     this.lastUpdatePacketTime = 0;
-    this.rtt = 50;
     this.wasAliveLastTick = false;
+    this.lastSentMouseX = undefined;
+    this.lastSentMouseY = undefined;
+    this._lastMouseSentAt = 0;
     this.isPrimary = AxisLockThreshold;
     if (this.isPrimary) {
       
@@ -504,73 +498,55 @@ class XHR_v4dBj2ayea9a5_Inst {
       return this.sendPing();
     }, 1000);
   }
-  _cursorTarget() {
-    const frozen =
-      this.mouseFrozen &&
+  sendMouseThrottled(x, y, force = false) {
+    if (!this.isConnected()) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    const now = performance.now();
+    const hasPrev =
       Number.isFinite(this.lastSentMouseX) &&
       Number.isFinite(this.lastSentMouseY);
-    let mx = frozen
-      ? this.lastSentMouseX
-      : Number.isFinite(this.calculatedMouseX)
-      ? this.calculatedMouseX
-      : this.lastSentMouseX ?? 0;
-    let my = frozen
-      ? this.lastSentMouseY
-      : Number.isFinite(this.calculatedMouseY)
-      ? this.calculatedMouseY
-      : this.lastSentMouseY ?? 0;
-    const lineState = VJjDr._getActivePlayerState(this);
-    if (
-      !frozen &&
-      lineState &&
-      typeof lineState.state === "string" &&
-      lineState.state.startsWith("active-")
-    ) {
-      if (this.lineSplitAxis === "x" && Number.isFinite(this.lineSplitAnchorY)) {
-        my = this.lineSplitAnchorY;
-      } else if (
-        this.lineSplitAxis === "y" &&
-        Number.isFinite(this.lineSplitAnchorX)
-      ) {
-        mx = this.lineSplitAnchorX;
-      }
-    }
-    return [mx, my];
-  }
-  sendMouseToCursor() {
-    if (!this.isConnected()) {
+    const dx = hasPrev ? rx - this.lastSentMouseX : Infinity;
+    const dy = hasPrev ? ry - this.lastSentMouseY : Infinity;
+    const distSq = dx * dx + dy * dy;
+    if (!force) {
+      if (distSq <= 25) return;
+      if (this._lastMouseSentAt && now - this._lastMouseSentAt < 35) return;
+    } else if (hasPrev && distSq === 0) {
       return;
     }
-    const [mx, my] = this._cursorTarget();
-    this.lastSentMouseX = mx;
-    this.lastSentMouseY = my;
-    this.sendPacket(VoidGBYH.sendMouse(mx, my));
-  }
-  _releaseKeyboardFocus() {
-    const focused = document.activeElement;
-    if (focused && focused !== document.body && typeof focused.blur === "function") {
-      focused.blur();
-    }
+    this.lastSentMouseX = rx;
+    this.lastSentMouseY = ry;
+    this._lastMouseSentAt = now;
+    this.sendPacket(VoidGBYH.sendMouse(rx, ry));
   }
   sendSplit(...AxisLockThreshold) {
     AxisLockThreshold.length = 1;
     return new Promise((minimapSmoothFactor) => {
       const stages = Math.max(1, Math.min(8, Number(AxisLockThreshold[0]) || 1));
-      const [mx, my] = this._cursorTarget();
-      this.lastSentMouseX = mx;
-      this.lastSentMouseY = my;
-      this._splitSentAt = performance.now();
-      this._splitCellsBefore = this.myCells.size;
-      const splitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
-      const packets = [];
-      for (let stage = 0; stage < stages; stage++) {
-        packets.push(splitPacket);
+      let mx = this.mouseFrozen
+        ? (this.lastSentMouseX ?? this.calculatedMouseX ?? 0)
+        : (this.calculatedMouseX ?? this.lastSentMouseX ?? 0);
+      let my = this.mouseFrozen
+        ? (this.lastSentMouseY ?? this.calculatedMouseY ?? 0)
+        : (this.calculatedMouseY ?? this.lastSentMouseY ?? 0);
+      const lsState = VJjDr?._getActivePlayerState?.(this);
+      if (lsState && lsState.state !== "idle") {
+        if (this.lineSplitAxis === "x") my = this.lineSplitAnchorY;
+        else if (this.lineSplitAxis === "y") mx = this.lineSplitAnchorX;
+        else {
+          mx = this.lineSplitAnchorX;
+          my = this.lineSplitAnchorY;
+        }
       }
-      this.sendPackets(packets);
-      const rtt = Number.isFinite(this.rtt) ? this.rtt : 50;
+      if (!this.mouseFrozen) {
+        this.sendMouseThrottled(mx, my, true);
+      }
+      this.sendPacket(VoidGBYH.sendSplitPacket(mx, my, stages));
       setTimeout(() => {
         minimapSmoothFactor();
-      }, Math.min(200, Math.max(0, rtt)) + 15);
+      }, (parseFloat($("#currentPing span").text().replace("ms", "")) || 50) + 15);
     });
   }
   getMass() {
@@ -600,7 +576,6 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     Ctx_aylk4EOu();
     jQueryLzNd.close("mainModal");
-    this._releaseKeyboardFocus();
     if (this.isPrimary) {
       Proto$L05X_ea9c6_sub();
     }
@@ -619,8 +594,6 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     this.name = this.isPrimary ? $("#name-box").val() : $("#name-box2").val();
     this.spectate = false;
-    this.mouseFrozen = false;
-    this._ejectHeld = false;
     this.currentServerName = NghauAMea965_VAL.name;
     if (this.isPrimary) {
       $("#currentServer nord-icon").hide();
@@ -629,10 +602,7 @@ class XHR_v4dBj2ayea9a5_Inst {
       $("#currentServer").attr("variant", "success");
       $("#currentServerName").text(this.currentServerName);
       if (this.isConnected() && this.currentServer == NghauAMea965_VAL.ip) {
-        if (this.myCells.size === 0 || this._appliedName !== this.name) {
-          this.sendPacket(VoidGBYH.setName(this.name));
-          this._appliedName = this.name;
-        }
+        this.sendPacket(VoidGBYH.setName(this.name));
         BigIntLsuea9cc_ex(false);
       } else {
         
@@ -642,10 +612,7 @@ class XHR_v4dBj2ayea9a5_Inst {
       this.isConnected() &&
       this.currentServer == NghauAMea965_VAL.ip
     ) {
-      if (this.myCells.size === 0 || this._appliedName !== this.name) {
-        this.sendPacket(VoidGBYH.setName(this.name));
-        this._appliedName = this.name;
-      }
+      this.sendPacket(VoidGBYH.setName(this.name));
     } else {
       
       if (If$sEyzqKbhea93f_Exec && If$sEyzqKbhea93f_Exec.isConnected()) {
@@ -663,16 +630,17 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     Ctx_aylk4EOu();
     jQueryLzNd.close("mainModal");
-    this._releaseKeyboardFocus();
     if (this.isPrimary) {
       
       Proto$L05X_ea9c6_sub();
     }
   }
   connect(AxisLockThreshold) {
-    GetEre34Q = 0;
-    $("#currentTotalXP").hide();
-    $("#currentTotalXP").text("");
+    if (this.isPrimary) {
+      GetEre34Q = 0;
+      $("#currentTotalXP").hide();
+      $("#currentTotalXP").text("");
+    }
     if (this.socket != null) {
       this.socket.nextUrl = AxisLockThreshold;
       this.disconnect();
@@ -781,6 +749,7 @@ class XHR_v4dBj2ayea9a5_Inst {
       
       this.isConnecting = false;
       this.stopReconnectAttempts();
+      this._lastAutoRespawnAt = performance.now();
       if (!this.spectate) {
         
         this.play();
@@ -821,10 +790,11 @@ class XHR_v4dBj2ayea9a5_Inst {
     // }
   }
   disconnect() {
-    
-    GetEre34Q = 0;
-    $("#currentTotalXP").hide();
-    $("#currentTotalXP").text("");
+    if (this.isPrimary) {
+      GetEre34Q = 0;
+      $("#currentTotalXP").hide();
+      $("#currentTotalXP").text("");
+    }
     if (this.socket) {
       
       this.socket.close();
@@ -841,6 +811,7 @@ class XHR_v4dBj2ayea9a5_Inst {
       
       this.isConnecting = false;
       this.stopReconnectAttempts();
+      this._lastAutoRespawnAt = performance.now();
     }
   }
   clearBuckets() {
@@ -856,10 +827,11 @@ class XHR_v4dBj2ayea9a5_Inst {
     this.foodObjects.clear();
   }
   reset() {
-    
-    GetEre34Q = 0;
-    $("#currentTotalXP").hide();
-    $("#currentTotalXP").text("");
+    if (this.isPrimary) {
+      GetEre34Q = 0;
+      $("#currentTotalXP").hide();
+      $("#currentTotalXP").text("");
+    }
     if (!this.isPrimary) {
       
       this.stopReconnectAttempts();
@@ -880,13 +852,14 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     this.playerId = 0;
     this.score = 0;
+    this.lastSentMouseX = undefined;
+    this.lastSentMouseY = undefined;
+    this._lastMouseSentAt = 0;
+    if (!this.isPrimary) {
+      this.isConnecting = false;
+    }
     this.customGameMap = null;
     this.currentServer = null;
-    this.mouseFrozen = false;
-    this._ejectHeld = false;
-    this._appliedName = undefined;
-    this._pingSentAt = undefined;
-    this._lastMultiAction = 0;
     VJjDr.stopLinesplit(this);
     this.clearParty();
     VJjDr.handlePlayerDeathOrDisconnect();
@@ -931,6 +904,7 @@ class XHR_v4dBj2ayea9a5_Inst {
     this.connect(NghauAMea965_VAL.ip);
   }
   handleDeath() {
+    this._lastAutoRespawnAt = performance.now();
     if (for_zWYea948_lte) {
       const AxisLockThreshold = faCUfKea9fb_add();
       const minimapSmoothFactor = this;
@@ -943,7 +917,13 @@ class XHR_v4dBj2ayea9a5_Inst {
           VoidGBYH.sendSpectate(AxisLockThreshold.playerId)
         );
         setTimeout(() => {
-          if (minimapSmoothFactor && minimapSmoothFactor.isConnected()) {
+          if (
+            minimapSmoothFactor &&
+            minimapSmoothFactor.isConnected() &&
+            El_SqvbXGiea949_Tmp &&
+            !jQueryLzNd.isOpen("mainModal")
+          ) {
+            minimapSmoothFactor._lastAutoRespawnAt = performance.now();
             minimapSmoothFactor.play();
           }
         }, 1000);
@@ -958,22 +938,22 @@ class XHR_v4dBj2ayea9a5_Inst {
     let combinedCameraDistanceThreshold;
     if (drawMinimapInterval) {
       if (React_RtHu4Gea946) {
-        
         if (!jQueryLzNd.isOpen("mainModal")) {
           this.spec();
         }
         React_RtHu4Gea946 = false;
         return;
       }
+      if (jQueryLzNd.isOpen("mainModal")) {
+        return;
+      }
       combinedCameraDistanceThreshold = Mao5huZea938_run.cAutoRespawn;
       if (combinedCameraDistanceThreshold) {
-        
-        if (!jQueryLzNd.isOpen("mainModal")) {
-          
-          this.play();
-        }
+        this.play();
       } else if (baseCellSize && baseCellSize.myCells.size > 0) {
         ForKgjVzrQea9fc_Status();
+      } else if (!this.spectate) {
+        jQueryLzNd.open("mainModal");
       }
     } else {
       combinedCameraDistanceThreshold = El_SqvbXGiea949_Tmp;
@@ -1069,32 +1049,63 @@ class XHR_v4dBj2ayea9a5_Inst {
     }
     if (AxisLockThreshold === CoKB.kMultiSplit) {
       zd8T_jfeea9b6_and.deactivate();
+      VJjDr.stopLinesplit(faCUfKea9fb_add());
       If_yEAw_eaa03_Res(1);
       return;
     }
     if (AxisLockThreshold === CoKB.kMultiDouble) {
       zd8T_jfeea9b6_and.deactivate();
+      VJjDr.stopLinesplit(faCUfKea9fb_add());
       If_yEAw_eaa03_Res(2);
       return;
     }
     if (AxisLockThreshold === CoKB.kMultiMax) {
       zd8T_jfeea9b6_and.deactivate();
+      VJjDr.stopLinesplit(faCUfKea9fb_add());
       If_yEAw_eaa03_Res(8);
       return;
     }
     if (AxisLockThreshold === CoKB.kMultiEject) {
-      var minimapSmoothFactor;
-      var drawMinimapInterval;
       zd8T_jfeea9b6_and.deactivate();
-      minimapSmoothFactor = faCUfKea9fb_add();
-      drawMinimapInterval =
-        minimapSmoothFactor === If$sEyzqKbhea93f_Exec
+  VJjDr.stopLinesplit(minimapSmoothFactor);
+      const active = faCUfKea9fb_add();
+      const multi =
+        active === If$sEyzqKbhea93f_Exec
           ? Str_NmyJ4kX
           : If$sEyzqKbhea93f_Exec;
-      if (drawMinimapInterval) {
+      if (multi && !multi._multiEjectHeld) {
+        multi._multiEjectHeld = true;
         CLASS_3Ft = true;
-        drawMinimapInterval.sendMouseToCursor();
-        drawMinimapInterval.sendPacket(VoidGBYH.sendEjectMass(true));
+        if (
+          !NOgc$oea945_num &&
+          Mao5huZea938_run.mouseFollow &&
+          !multi.mouseFrozen &&
+          multi.isConnected()
+        ) {
+          if (
+            Cd8Hiea95a_Init === "followMouseSCell" &&
+            active.myCells.size > 0
+          ) {
+            let sx = 0,
+              sy = 0;
+            for (const c of active.myCells.values()) {
+              sx += c.x;
+              sy += c.y;
+            }
+            multi.sendMouseThrottled(
+              sx / active.myCells.size,
+              sy / active.myCells.size,
+              true
+            );
+          } else {
+            multi.sendMouseThrottled(
+              active.calculatedMouseX,
+              active.calculatedMouseY,
+              true
+            );
+          }
+        }
+        multi.sendPacket(VoidGBYH.sendEjectMass(true));
       }
       return;
     }
@@ -1114,39 +1125,10 @@ class XHR_v4dBj2ayea9a5_Inst {
       this.socket.send(AxisLockThreshold);
     }
   }
-  sendPackets(packets) {
-    if (!this.isConnected() || !packets || packets.length === 0) {
-      return;
-    }
-    if (typeof this.socket.sendBatch === "function") {
-      if (!window.__rxSplitDiag) {
-        window.__rxSplitDiag = true;
-        try {
-          const win = this.socket._frameWindow
-            ? this.socket._frameWindow()
-            : null;
-          console.log(
-            "[Gota Redux] split send path: " +
-              (win && typeof win.__rxBridgeSendBatch === "function"
-                ? "direct"
-                : "postMessage") +
-              ", packets: " +
-              packets.length
-          );
-        } catch (_) {}
-      }
-      this.socket.sendBatch(packets);
-      return;
-    }
-    for (const packet of packets) {
-      this.sendPacket(packet);
-    }
-  }
   sendPing() {
     if (this.isConnected()) {
-      this._pingSentAt = performance.now();
       if (this.isPrimary) {
-        Catch_wCYNjd$ea96b_exec = this._pingSentAt;
+        Catch_wCYNjd$ea96b_exec = performance.now();
       }
       this.sendPacket(VoidGBYH.sendPing());
     }
@@ -1266,8 +1248,6 @@ class XHR_v4dBj2ayea9a5_Inst {
       }
       return;
     }
-    
-    
     window.isGameLoopFrozenByData = false;
     const drawMinimapInterval = performance.now();
     baseCellSize.offset = 1;
@@ -1350,7 +1330,9 @@ class XHR_v4dBj2ayea9a5_Inst {
         }
         break;
       case MESSAGE_TYPES.PING:
-        this.handlePing();
+        if (this.isPrimary) {
+          this.handlePing();
+        }
         break;
       case MESSAGE_TYPES.CHAT:
         if (this.isPrimary) {
@@ -1621,19 +1603,6 @@ class XHR_v4dBj2ayea9a5_Inst {
               break;
           }
         }
-      }
-    }
-    if (this._splitSentAt) {
-      if (this.myCells.size > this._splitCellsBefore) {
-        window.__rxPerf &&
-          (window.__rxPerf.lastSplitMs = Math.round(
-            performance.now() - this._splitSentAt
-          ));
-        window.__rxPerf && (window.__rxPerf.splitApplied = (window.__rxPerf.splitApplied || 0) + 1);
-        this._splitSentAt = 0;
-      } else if (performance.now() - this._splitSentAt > 3000) {
-        window.__rxPerf && (window.__rxPerf.splitMissed = (window.__rxPerf.splitMissed || 0) + 1);
-        this._splitSentAt = 0;
       }
     }
     this.updateScorePanel();
@@ -2123,15 +2092,27 @@ class XHR_v4dBj2ayea9a5_Inst {
               : "" + (baseCellSize + 1) + ". ";
           drawMinimapInterval.fillStyle = combinedInterpSpeed;
           drawMinimapInterval.font = "14px 'Nordhealth Sans', sans-serif";
-          let combinedCameraDistanceThreshold = AxisLockThreshold.name;
+          const isBot = AxisLockThreshold.name.includes("🤖");
+          const botImg = jW39BD0.botHtmlIcon;
+          const showBotIcon =
+            isBot && botImg && botImg.complete && botImg.naturalWidth > 0;
+          const iconSize = 16;
+          const iconGap = 5;
+          let combinedCameraDistanceThreshold = showBotIcon
+            ? AxisLockThreshold.name.replace(/🤖/g, "").trim()
+            : AxisLockThreshold.name;
           const MassDisplayType =
             drawMinimapInterval.measureText(minimapSmoothFactor).width;
-          const SKIN_LOAD_STATUS = MESSAGE_TYPES - MassDisplayType - 20;
+          const iconReserved = showBotIcon ? iconSize + iconGap : 0;
+          const SKIN_LOAD_STATUS =
+            MESSAGE_TYPES - MassDisplayType - 20 - iconReserved;
           if (
+            combinedCameraDistanceThreshold.length > 0 &&
             drawMinimapInterval.measureText(combinedCameraDistanceThreshold)
               .width > SKIN_LOAD_STATUS
           ) {
             while (
+              combinedCameraDistanceThreshold.length > 0 &&
               drawMinimapInterval.measureText(
                 combinedCameraDistanceThreshold + "…"
               ).width > SKIN_LOAD_STATUS
@@ -2141,11 +2122,27 @@ class XHR_v4dBj2ayea9a5_Inst {
             }
             combinedCameraDistanceThreshold += "…";
           }
+          const fullText =
+            minimapSmoothFactor + combinedCameraDistanceThreshold;
           drawMinimapInterval.fillText(
-            minimapSmoothFactor + combinedCameraDistanceThreshold,
+            fullText,
             10,
             AxisLockThreshold.currentY
           );
+          if (showBotIcon) {
+            const textWidth = drawMinimapInterval.measureText(fullText).width;
+            const iconX =
+              10 +
+              textWidth +
+              (combinedCameraDistanceThreshold.length > 0 ? iconGap : 0);
+            drawMinimapInterval.drawImage(
+              botImg,
+              iconX,
+              AxisLockThreshold.currentY - iconSize / 2,
+              iconSize,
+              iconSize
+            );
+          }
         }
       );
       if (baseCellSize < 1) {
@@ -2160,21 +2157,8 @@ class XHR_v4dBj2ayea9a5_Inst {
   }
   handlePing(...AxisLockThreshold) {
     AxisLockThreshold.length = 0;
-    const pingSentAt = Number.isFinite(this.socket?._pingSentAt)
-      ? this.socket._pingSentAt
-      : this._pingSentAt;
-    if (Number.isFinite(pingSentAt)) {
-      this.rtt = Math.min(2000, Math.max(1, performance.now() - pingSentAt));
-      if (this.socket) {
-        this.socket._pingSentAt = undefined;
-      }
-      this._pingSentAt = undefined;
-    }
+    async_gvZqk_Dc_ea93e_div = performance.now() - Catch_wCYNjd$ea96b_exec;
     window.isGameLoopFrozenByPing = false;
-    if (!this.isPrimary) {
-      return;
-    }
-    async_gvZqk_Dc_ea93e_div = this.rtt;
     const minimapSmoothFactor =
       async_gvZqk_Dc_ea93e_div < 100
         ? "success"
@@ -3391,6 +3375,10 @@ class RETURN_FUB_ea9a9_Opt {
     ) {
       return PIXI.Texture.EMPTY;
     }
+    if (String(AxisLockThreshold.name).includes("🤖")) {
+      const botTex = jW39BD0.getTexture("botTexture");
+      if (botTex) return botTex;
+    }
     const minimapSmoothFactor = this._getCacheKey(AxisLockThreshold);
     if (this.textureCache.has(minimapSmoothFactor)) {
       return this.textureCache.get(minimapSmoothFactor);
@@ -3420,9 +3408,6 @@ class RETURN_FUB_ea9a9_Opt {
       this.rendererText.style.strokeThickness = combinedCameraDistanceThreshold
         ? Mao5huZea938_run.rTextOutlines
         : 9;
-    }
-    if (this.textureCache.size > 500) {
-      this.textureCache.clear();
     }
     this.rendererText.text = AxisLockThreshold.name.includes("🤖")
       ? "🤖"
@@ -3473,14 +3458,11 @@ class E0Pea9aa_Cfg {
     return buf;
   }
   sendKey(...AxisLockThreshold) {
+    AxisLockThreshold.length = 1;
     if (AxisLockThreshold[0] === 17) {
       const active = faCUfKea9fb_add() || If$sEyzqKbhea93f_Exec;
-      const mx = Number.isFinite(AxisLockThreshold[1])
-        ? AxisLockThreshold[1]
-        : active?.lastSentMouseX ?? active?.calculatedMouseX ?? 0;
-      const my = Number.isFinite(AxisLockThreshold[2])
-        ? AxisLockThreshold[2]
-        : active?.lastSentMouseY ?? active?.calculatedMouseY ?? 0;
+      const mx = active?.calculatedMouseX ?? active?.lastSentMouseX ?? 0;
+      const my = active?.calculatedMouseY ?? active?.lastSentMouseY ?? 0;
       return this.sendSplitPacket(mx, my, 1);
     }
     const buf = new ArrayBuffer(1);
@@ -4217,11 +4199,36 @@ const jW39BD0 = {
       }
     }
   },
+  botHtmlIcon: null,
   async preloadGameAssets() {
     try {
+      const loadHtmlBotIcon = new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          this.botHtmlIcon = img;
+          const size = 100;
+          const c = document.createElement("canvas");
+          c.width = size;
+          c.height = size;
+          const ctx = c.getContext("2d");
+          const scale = Math.min(
+            size / Math.max(1, img.naturalWidth),
+            size / Math.max(1, img.naturalHeight)
+          );
+          const w = img.naturalWidth * scale;
+          const h = img.naturalHeight * scale;
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+          this.textures.set("botTexture", PIXI.Texture.from(c));
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = "images/bot.png";
+      });
       await Promise.all([
         this.preloadTexture("spikeTexture", "images/spike.png"),
         this.preloadTexture("motherCellTexture", "images/motherCell.png"),
+        loadHtmlBotIcon,
       ]);
       Logger.info("Game assets preloaded successfully");
     } catch (AxisLockThreshold) {
@@ -4387,12 +4394,6 @@ const VJjDr = {
       drawMinimapInterval.state === "activating" ||
       drawMinimapInterval.state === "locking"
     ) {
-      if (
-        performance.now() - (drawMinimapInterval.stateSince || 0) > 500
-      ) {
-        this.stopLinesplit(minimapSmoothFactor);
-        return false;
-      }
       drawMinimapInterval.pendingSplitCount += AxisLockThreshold;
       return true;
     } else if (drawMinimapInterval.state.startsWith("active-")) {
@@ -4464,7 +4465,6 @@ const VJjDr = {
       AxisLockThreshold.lineSplitAnchorY = AxisLockThreshold.centerY;
     }
     minimapSmoothFactor.state = "activating";
-    minimapSmoothFactor.stateSince = performance.now();
     AxisLockThreshold.lineSplitAxis = null;
     minimapSmoothFactor.mouseFreezeBackup = AxisLockThreshold.mouseFrozen;
     if (this.stateIndicator) {
@@ -4484,7 +4484,6 @@ const VJjDr = {
     minimapSmoothFactor.packetTimer = setTimeout(() => {
       if (minimapSmoothFactor.state === "activating") {
         minimapSmoothFactor.state = "locking";
-        minimapSmoothFactor.stateSince = performance.now();
         if (this.stateIndicator) {
           this.stateIndicator
             .clear()
@@ -4497,7 +4496,7 @@ const VJjDr = {
             .endFill();
         }
       }
-    }, async_gvZqk_Dc_ea93e_div * 2);
+    }, (async_gvZqk_Dc_ea93e_div || 50) * 2);
   },
   stopLinesplit: function (AxisLockThreshold) {
     if (!AxisLockThreshold) {
@@ -4923,7 +4922,7 @@ const Lodash$KALTWzD_ea9b8_buf = {
     }
   },
   cHideChat: function () {
-    $(".chat-panel").css(
+    $("#chat-panel").css(
       "display",
       Mao5huZea938_run.cHideChat ? "none" : "flex"
     );
@@ -5047,13 +5046,291 @@ AhC4E4RR = undefined;
 Array_eUa8SZ3Z$ea992_Buf = undefined;
 async_D8l9NKg = undefined;
 PMulimorea994_str = undefined;
+function initShiftScrollbars() {
+  if (window.__rxScrollInit) return;
+  window.__rxScrollInit = true;
+
+  const entries = new Map();
+  let burstUntil = 0;
+  let burstRaf = 0;
+
+  const getZIndex = (el) => {
+    if (el.closest(".modal-overlay")) return 1005;
+    if (el.closest("#autocomplete-popout")) return 850;
+    if (el.closest("#chat-panel")) return 55;
+    return 950;
+  };
+
+  const isElVisible = (el, cs) => {
+    if (cs.display === "none" || cs.visibility === "hidden") return false;
+    if (parseFloat(cs.opacity) <= 0.02) return false;
+    const modal = el.closest(".modal-overlay");
+    if (
+      modal &&
+      (!modal.hasAttribute("open") || modal.classList.contains("modal-inactive"))
+    ) {
+      return false;
+    }
+    const popout = el.closest("nord-popout");
+    if (popout && !popout.hasAttribute("open") && !popout.open) {
+      return false;
+    }
+    return true;
+  };
+
+  const updateEntry = (entry) => {
+    const { el, track, thumb } = entry;
+    if (!document.body.contains(el)) {
+      track.style.display = "none";
+      return;
+    }
+    const cs = getComputedStyle(el);
+    const oy = cs.overflowY;
+    const scrollable = oy === "auto" || oy === "scroll";
+    const maxScroll = el.scrollHeight - el.clientHeight;
+
+    if (!scrollable || maxScroll <= 1 || !isElVisible(el, cs)) {
+      track.style.display = "none";
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      track.style.display = "none";
+      return;
+    }
+
+    const bt = parseFloat(cs.borderTopWidth) || 0;
+    const bb = parseFloat(cs.borderBottomWidth) || 0;
+    const br = parseFloat(cs.borderRightWidth) || 0;
+    const trackTop = rect.top + bt + 2;
+    const trackHeight = Math.max(0, rect.height - bt - bb - 4);
+    if (trackHeight < 12) {
+      track.style.display = "none";
+      return;
+    }
+
+    track.style.display = "block";
+    track.style.zIndex = String(getZIndex(el));
+    track.style.top = trackTop + "px";
+    track.style.left = rect.right - br - 12 + "px";
+    track.style.height = trackHeight + "px";
+
+    const thumbHeight = Math.max(
+      36,
+      Math.min(trackHeight, (el.clientHeight / el.scrollHeight) * trackHeight)
+    );
+    const travel = Math.max(1, trackHeight - thumbHeight);
+    const ratio = Math.max(0, Math.min(1, el.scrollTop / maxScroll));
+    const thumbTop = ratio * travel;
+
+    thumb.style.height = thumbHeight + "px";
+    thumb.style.transform = "translateY(" + thumbTop + "px)";
+    entry.trackHeight = trackHeight;
+    entry.thumbHeight = thumbHeight;
+    entry.travel = travel;
+    entry.thumbTop = thumbTop;
+    entry.maxScroll = maxScroll;
+  };
+
+  const syncAll = () => {
+    for (const entry of entries.values()) updateEntry(entry);
+  };
+
+  const triggerBurst = (ms = 550) => {
+    burstUntil = Math.max(burstUntil, performance.now() + ms);
+    if (burstRaf) return;
+    const step = () => {
+      syncAll();
+      if (performance.now() < burstUntil) {
+        burstRaf = requestAnimationFrame(step);
+      } else {
+        burstRaf = 0;
+      }
+    };
+    burstRaf = requestAnimationFrame(step);
+  };
+
+  const ro = new ResizeObserver(() => syncAll());
+
+  const attach = (el) => {
+    if (!el || entries.has(el)) return;
+    const track = document.createElement("div");
+    track.className = "rx-scrollbar";
+    const thumb = document.createElement("div");
+    thumb.className = "rx-scrollbar-thumb";
+    track.appendChild(thumb);
+    document.body.appendChild(track);
+
+    const entry = {
+      el,
+      track,
+      thumb,
+      trackHeight: 0,
+      thumbHeight: 36,
+      travel: 1,
+      thumbTop: 0,
+      maxScroll: 0,
+    };
+    entries.set(el, entry);
+    ro.observe(el);
+
+    el.addEventListener("scroll", () => updateEntry(entry), { passive: true });
+    track.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        el.scrollTop += e.deltaY;
+      },
+      { passive: false }
+    );
+
+    track.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      updateEntry(entry);
+      if (entry.maxScroll <= 0) return;
+
+      const tRect = track.getBoundingClientRect();
+      const clickY = e.clientY - tRect.top;
+      const onThumb =
+        clickY >= entry.thumbTop && clickY <= entry.thumbTop + entry.thumbHeight;
+
+      let grabOffset;
+      if (onThumb) {
+        grabOffset = clickY - entry.thumbTop;
+      } else {
+        grabOffset = entry.thumbHeight / 2;
+        const targetThumbTop = Math.max(
+          0,
+          Math.min(entry.travel, clickY - grabOffset)
+        );
+        el.scrollTop = (targetThumbTop / entry.travel) * entry.maxScroll;
+        updateEntry(entry);
+      }
+
+      thumb.classList.add("is-dragging");
+
+      const onMove = (ev) => {
+        const curY = ev.clientY - tRect.top;
+        const nextThumbTop = Math.max(
+          0,
+          Math.min(entry.travel, curY - grabOffset)
+        );
+        el.scrollTop = (nextThumbTop / entry.travel) * entry.maxScroll;
+      };
+
+      const onUp = () => {
+        thumb.classList.remove("is-dragging");
+        window.removeEventListener("mousemove", onMove, true);
+        window.removeEventListener("mouseup", onUp, true);
+        window.removeEventListener("blur", onUp);
+      };
+
+      window.addEventListener("mousemove", onMove, true);
+      window.addEventListener("mouseup", onUp, true);
+      window.addEventListener("blur", onUp);
+    });
+  };
+
+  [".main-right", "#chatAll", "#autocomplete-panel", ".modal-content"].forEach(
+    (sel) => {
+      document.querySelectorAll(sel).forEach(attach);
+    }
+  );
+
+  const mainRight = document.querySelector(".main-right");
+  if (mainRight) {
+    new MutationObserver(() => triggerBurst(550)).observe(mainRight, {
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+  }
+  const mainModal = document.getElementById("mainModal");
+  if (mainModal) {
+    new MutationObserver(() => triggerBurst(350)).observe(mainModal, {
+      attributes: true,
+      attributeFilter: ["open", "class"],
+    });
+  }
+  const acPop = document.getElementById("autocomplete-popout");
+  if (acPop) {
+    new MutationObserver(() => syncAll()).observe(acPop, {
+      attributes: true,
+      attributeFilter: ["open"],
+    });
+  }
+  const acPanel = document.getElementById("autocomplete-panel");
+  if (acPanel) {
+    new MutationObserver(() => syncAll()).observe(acPanel, {
+      childList: true,
+    });
+  }
+  const chatAll = document.getElementById("chatAll");
+  if (chatAll) {
+    new MutationObserver(() => syncAll()).observe(chatAll, {
+      childList: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+  }
+
+  window.addEventListener("resize", () => syncAll());
+  syncAll();
+}
+
+let __rxIgnoreNextEnterKeyup = false;
+function __rxBlurChatInput() {
+  const chatEl = document.getElementById("chat-input");
+  if (!chatEl) return;
+  const inner = chatEl.shadowRoot?.querySelector("input");
+  if (inner) inner.blur();
+  chatEl.blur();
+}
+const __rxLastVisibility = {};
+function __rxToggleVisibilityOption(optKey, label) {
+  const cur = Mao5huZea938_run[optKey] || "ALL";
+  let next;
+  if (cur !== "NONE") {
+    __rxLastVisibility[optKey] = cur;
+    next = "NONE";
+  } else {
+    next = __rxLastVisibility[optKey] || "ALL";
+  }
+  Mao5huZea938_run[optKey] = next;
+  const item = BigIntpwyK0j_ea9d4_mul[optKey]?.find((x) => x.value === next);
+  const dd = $("#" + optKey);
+  if (dd.length) {
+    dd.attr("value", next);
+    if (item) dd.find("nord-button").text(item.text);
+  }
+  Gu0B6FmO(optKey, next);
+  BOOLxEFAPea9cf_or(label + ": " + (item ? item.text : next));
+}
 function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
+  const ev = AxisLockThreshold[1];
+  const isMouseEvent =
+    ev && typeof MouseEvent !== "undefined" && ev instanceof MouseEvent;
   if (Kb5zM5ea951_neq) {
-    if (!jQueryLzNd.isOpen("mainModal")) {
-      Kb5zM5ea951_neq = false;
-    } else {
-      dNwVcfi$ea9d8_type(AxisLockThreshold[0]);
-      AxisLockThreshold[1].preventDefault();
+    if (isMouseEvent && ev.target?.closest?.(".keybind-unbind-btn")) {
+      return;
+    }
+    dNwVcfi$ea9d8_type(AxisLockThreshold[0]);
+    AxisLockThreshold[1].preventDefault();
+    return;
+  }
+  if (isMouseEvent) {
+    const isContextBtn =
+      ev.button === 0 &&
+      Boolean(ev.target?.closest?.("#context-menu .context-action"));
+    window.__rxCtxMenuBtnDown = isContextBtn;
+    if (
+      ev.target?.closest?.(
+        "#chat-panel, #emotePanel, #autocomplete-popout, #mainModal, .rx-scrollbar"
+      ) ||
+      isContextBtn
+    ) {
       return;
     }
   }
@@ -5064,24 +5341,25 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       minimapSmoothFactor.tagName === "NORD-INPUT" ||
       minimapSmoothFactor.isContentEditable)
   ) {
-    const visibleRects =
-      typeof minimapSmoothFactor.getClientRects === "function"
-        ? minimapSmoothFactor.getClientRects().length
-        : 0;
-    if (visibleRects === 0) {
-      if (typeof minimapSmoothFactor.blur === "function") {
-        minimapSmoothFactor.blur();
+    if (minimapSmoothFactor.id === "chat-input") {
+      if (AxisLockThreshold[0] === 13) {
+        ev?.preventDefault?.();
+        __rxIgnoreNextEnterKeyup = true;
+        in_Lv7rr7N($(minimapSmoothFactor).val());
+        __rxBlurChatInput();
+        return;
+      }
+      if (AxisLockThreshold[0] === 27) {
+        ev?.preventDefault?.();
+        __rxBlurChatInput();
+        return;
+      }
+      if (isMouseEvent) {
+        __rxBlurChatInput();
+      } else {
+        return;
       }
     } else {
-      if (
-        AxisLockThreshold[0] === 13 &&
-        minimapSmoothFactor.id === "chat-input"
-      ) {
-        in_Lv7rr7N($(minimapSmoothFactor).val());
-        setTimeout(() => {
-          return $(minimapSmoothFactor).blur();
-        }, 2);
-      }
       return;
     }
   }
@@ -5100,23 +5378,27 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
     AxisLockThreshold[1].preventDefault();
   }
   if (
+    AxisLockThreshold[0] !== -1 &&
     [
       CoKB.kSplit,
       CoKB.k4xSplit,
       CoKB.k8xSplit,
       CoKB.k16xSplit,
+      CoKB.k32xSplit,
       CoKB.k64xSplit,
+      CoKB.k128xSplit,
+      CoKB.k256xSplit,
       CoKB.kSwapPlayer,
       CoKB.kTrickSplit,
-    ].includes(AxisLockThreshold[0]) ||
-    (AxisLockThreshold[0] >= CoKB.k32xSplit &&
-      AxisLockThreshold[0] <= CoKB.k256xSplit)
+    ].includes(AxisLockThreshold[0])
   ) {
     in_hpdqea943_div = true;
   }
   switch (AxisLockThreshold[0]) {
     case CoKB.kSwapPlayer:
-      ForKgjVzrQea9fc_Status();
+      if (!AxisLockThreshold[1]?.repeat) {
+        ForKgjVzrQea9fc_Status();
+      }
       break;
     case CoKB.kTrickSplit: {
       let drawMinimapInterval = If$sEyzqKbhea93f_Exec;
@@ -5131,18 +5413,16 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       }
       const messageColors =
         combinedCameraDistanceThreshold > combinedZoomFocusStrength;
-      const trickSplit = (trickTarget) => {
-        if (!trickTarget || typeof trickTarget.sendSplit !== "function") {
-          return;
-        }
-        trickTarget.sendSplit(1);
-      };
       for (let MESSAGE_TYPES = 0; MESSAGE_TYPES < 8; MESSAGE_TYPES++) {
         setTimeout(() => {
-          trickSplit(messageColors ? drawMinimapInterval : baseCellSize);
+          (messageColors ? drawMinimapInterval : baseCellSize).sendPacket(
+            VoidGBYH.sendKey(17)
+          );
         }, !!MESSAGE_TYPES * 200);
       }
-      trickSplit(messageColors ? baseCellSize : drawMinimapInterval);
+      (messageColors ? baseCellSize : drawMinimapInterval).sendPacket(
+        VoidGBYH.sendKey(17)
+      );
       break;
     }
     case CoKB.kSoloMs:
@@ -5152,7 +5432,13 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       Mao5huZea938_run.BotFFeed = !Mao5huZea938_run.BotFFeed;
       break;
     case CoKB.kMouseFollow:
-      Mao5huZea938_run.mouseFollow = !Mao5huZea938_run.mouseFollow;
+      if (!AxisLockThreshold[1]?.repeat) {
+        Mao5huZea938_run.mouseFollow = !Mao5huZea938_run.mouseFollow;
+        do_QEm141();
+        BOOLxEFAPea9cf_or(
+          "Follow Mouse: " + (Mao5huZea938_run.mouseFollow ? "ON" : "OFF")
+        );
+      }
       break;
     case CoKB.kInfernoSplit: {
       const CellVisibility = faCUfKea9fb_add();
@@ -5160,20 +5446,14 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
         CellVisibility === If$sEyzqKbhea93f_Exec
           ? Str_NmyJ4kX
           : If$sEyzqKbhea93f_Exec;
-      const infernoSplit = (infernoTarget) => {
-        if (!infernoTarget || typeof infernoTarget.sendSplit !== "function") {
-          return;
-        }
-        infernoTarget.sendSplit(1);
-      };
       for (let MESSAGE_TYPES = 0; MESSAGE_TYPES < 4; MESSAGE_TYPES++) {
         setTimeout(() => {
-          infernoSplit(CellVisibility);
+          CellVisibility.sendPacket(VoidGBYH.sendKey(17));
         }, MESSAGE_TYPES * 20);
       }
       for (let SKIN_LOAD_STATUS = 0; SKIN_LOAD_STATUS < 2; SKIN_LOAD_STATUS++) {
         setTimeout(() => {
-          infernoSplit(MassDisplayType);
+          MassDisplayType.sendPacket(VoidGBYH.sendKey(17));
         }, SKIN_LOAD_STATUS * 20);
       }
       break;
@@ -5187,6 +5467,9 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       }
       break;
     case CoKB.kToggleAutoSpectate: {
+      if (AxisLockThreshold[1]?.repeat) {
+        break;
+      }
       const CellVisibility = faCUfKea9fb_add();
       if (CellVisibility && CellVisibility.spectate) {
         return;
@@ -5196,24 +5479,35 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       BOOLxEFAPea9cf_or("Auto-Spectate: " + PlayerState);
       break;
     }
-    case CoKB.kToggleInactiveToActiveSpec:
+    case CoKB.kToggleInactiveToActiveSpec: {
+      if (AxisLockThreshold[1]?.repeat) {
+        break;
+      }
       for_zWYea948_lte = !for_zWYea948_lte;
-      const PlayerState = for_zWYea948_lte ? "SENT TO SPEC" : "RETURN";
-      BOOLxEFAPea9cf_or("Multi Spectate-to-Play: " + PlayerState);
+      const specModeLabel = for_zWYea948_lte ? "SENT TO SPEC" : "RETURN";
+      BOOLxEFAPea9cf_or("Multi Spectate-to-Play: " + specModeLabel);
       break;
+    }
     case CoKB.kSoloTrick:
       hjScxea9fd_res(faCUfKea9fb_add());
       break;
     case CoKB.kFastFeed:
-      yield_LTAv5ipN();
+      if (!AxisLockThreshold[1]?.repeat) {
+        yield_LTAv5ipN();
+      }
       break;
     case CoKB.kFastFeedMode:
-      FROM$YeJ0i$eaa00_bool();
+      if (!AxisLockThreshold[1]?.repeat) {
+        FROM$YeJ0i$eaa00_bool();
+      }
       break;
     case CoKB.kLineSplit:
       VJjDr.activateLinesplitToggle();
       break;
-    case CoKB.kCameraMode:
+    case CoKB.kCameraMode: {
+      if (AxisLockThreshold[1]?.repeat) {
+        break;
+      }
       if (!$("#camera-mode-notification").length) {
         $(
           '<div id="camera-mode-notification" style="position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 1000;"></div>'
@@ -5229,6 +5523,93 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       qq8ea959_idx = defaultOptions;
       TruejJBgB31q(defaultOptions);
       Evt_gCqea9ce_Val("Player Camera: " + defaultSubPanelSettings);
+      break;
+    }
+    case CoKB.kMultiSplit:
+      if (!AxisLockThreshold[1]?.repeat) {
+        zd8T_jfeea9b6_and.deactivate();
+  VJjDr.stopLinesplit(minimapSmoothFactor);
+        If_yEAw_eaa03_Res(1);
+      }
+      break;
+    case CoKB.kMultiDouble:
+      if (!AxisLockThreshold[1]?.repeat) {
+        zd8T_jfeea9b6_and.deactivate();
+  VJjDr.stopLinesplit(minimapSmoothFactor);
+        If_yEAw_eaa03_Res(2);
+      }
+      break;
+    case CoKB.kMultiMax:
+      if (!AxisLockThreshold[1]?.repeat) {
+        zd8T_jfeea9b6_and.deactivate();
+  VJjDr.stopLinesplit(minimapSmoothFactor);
+        If_yEAw_eaa03_Res(8);
+      }
+      break;
+    case CoKB.kSplit:
+    case CoKB.k4xSplit:
+    case CoKB.k8xSplit:
+    case CoKB.k16xSplit:
+    case CoKB.k32xSplit:
+    case CoKB.k64xSplit:
+    case CoKB.k128xSplit:
+    case CoKB.k256xSplit:
+    case CoKB.kFreezeMouse:
+      if (!AxisLockThreshold[1]?.repeat) {
+        (If$sEyzqKbhea93f_Exec.enabled
+          ? If$sEyzqKbhea93f_Exec
+          : Str_NmyJ4kX
+        ).handleKey(AxisLockThreshold[0]);
+      }
+      break;
+    case CoKB.kContextMenu:
+      if (!AxisLockThreshold[1]?.repeat) {
+        AxisLockThreshold[1]?.preventDefault?.();
+        Catch$HaPx87ea9df_ret();
+      }
+      break;
+    case CoKB.kToggleSpec:
+      if (!AxisLockThreshold[1]?.repeat) {
+        const active = faCUfKea9fb_add();
+        if (active) {
+          if (!active.spectate && active.myCells.size === 0) {
+            active.spec();
+          } else {
+            active.spectatingId = 0;
+            active.sendPacket(VoidGBYH.sendKey(18));
+          }
+        }
+      }
+      break;
+    case CoKB.kToggleShowSkins:
+      if (!AxisLockThreshold[1]?.repeat) {
+        __rxToggleVisibilityOption("sShowSkins", "Skins");
+      }
+      break;
+    case CoKB.kToggleShowNames:
+      if (!AxisLockThreshold[1]?.repeat) {
+        __rxToggleVisibilityOption("sShowNames", "Names");
+      }
+      break;
+    case CoKB.kToggleShowMass:
+      if (!AxisLockThreshold[1]?.repeat) {
+        __rxToggleVisibilityOption("sShowMass", "Mass");
+      }
+      break;
+    case CoKB.kToggleHideChat:
+      if (!AxisLockThreshold[1]?.repeat) {
+        Mao5huZea938_run.cHideChat = !Mao5huZea938_run.cHideChat;
+        const chatToggle = $("#cHideChat");
+        if (chatToggle.length) {
+          chatToggle.prop("checked", Mao5huZea938_run.cHideChat);
+          if (Mao5huZea938_run.cHideChat) chatToggle.attr("checked", "");
+          else chatToggle.removeAttr("checked");
+        }
+        Gu0B6FmO("cHideChat");
+        BOOLxEFAPea9cf_or(
+          "Chat: " + (Mao5huZea938_run.cHideChat ? "Hidden" : "Shown")
+        );
+      }
       break;
     default:
       (If$sEyzqKbhea93f_Exec.enabled
@@ -5264,7 +5645,7 @@ function DateN4UN(...AxisLockThreshold) {
           ? Str_NmyJ4kX
           : If$sEyzqKbhea93f_Exec;
       if (AxisLockThreshold[57]) {
-        AxisLockThreshold[57].sendMouseToCursor();
+        AxisLockThreshold[57]._multiEjectHeld = false;
         AxisLockThreshold[57].sendPacket(VoidGBYH.sendEjectMass(false));
         CLASS_3Ft = false;
       }
@@ -5481,8 +5862,6 @@ if (!window.__rxWebShimInit) {
         else startConnect();
       } else if (channel === "bridge:send") {
         __rxSendToSlot(cid, { type: "send", data: data.data });
-      } else if (channel === "bridge:send-batch") {
-        __rxSendToSlot(cid, { type: "send-batch", data: data.list });
       } else if (channel === "bridge:disconnect") {
         slot.pendingConnect = null;
         __rxDiscardSlotFrame(cid, 400);
@@ -5529,12 +5908,7 @@ if (!window.__rxBridgeInit) {
     s.onclose?.({ code: 1000, reason: info?.reason || "Bridge error" });
   });
   window.api.on("bridge:ping-sent", (info) => {
-    const cid = info?.clientId === 2 ? 2 : 1;
-    const bridge = window.__rxBridges[cid];
-    if (bridge) {
-      bridge._pingSentAt = performance.now();
-    }
-    if (cid === 1) {
+    if (!info || info.clientId !== 2) {
       Catch_wCYNjd$ea96b_exec = performance.now();
     }
   });
@@ -5562,10 +5936,6 @@ class BridgeSocket {
       nick: String(nick || ""),
     });
   }
-  _frameWindow() {
-    const frame = document.getElementById("rx-bridge-frame-" + this.clientId);
-    return frame ? frame.contentWindow : null;
-  }
   send(data) {
     if (this.readyState !== 1) return;
     const u8 =
@@ -5574,39 +5944,7 @@ class BridgeSocket {
         : ArrayBuffer.isView(data)
         ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
         : new Uint8Array(data);
-    const win = this._frameWindow();
-    if (win && typeof win.__rxBridgeSend === "function") {
-      try {
-        if (win.__rxBridgeSend(u8)) {
-          return;
-        }
-      } catch (_) {}
-    }
     window.api.send("bridge:send", { clientId: this.clientId, data: u8 });
-  }
-  sendBatch(packets) {
-    if (this.readyState !== 1 || !packets || packets.length === 0) return;
-    const list = [];
-    for (const data of packets) {
-      list.push(
-        data instanceof ArrayBuffer
-          ? new Uint8Array(data)
-          : ArrayBuffer.isView(data)
-          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-          : new Uint8Array(data)
-      );
-    }
-    const win = this._frameWindow();
-    if (win && typeof win.__rxBridgeSendBatch === "function") {
-      try {
-        if (win.__rxBridgeSendBatch(list)) {
-          return;
-        }
-      } catch (_) {}
-    }
-    for (const packet of list) {
-      this.send(packet);
-    }
   }
   close() {
     if (this.readyState >= 2) return;
@@ -5624,6 +5962,23 @@ class BridgeSocket {
 
 async function NeweNPdm() {
   Logger.info("Starting Gota Redux client initialization...");
+  try {
+    const rawVanillaOpts = window.localStorage.getItem("opt" + "ions");
+    if (rawVanillaOpts) {
+      const vanillaOpts = JSON.parse(rawVanillaOpts);
+      if (
+        vanillaOpts &&
+        typeof vanillaOpts === "object" &&
+        vanillaOpts.cAutoRespawn
+      ) {
+        vanillaOpts.cAutoRespawn = false;
+        window.localStorage.setItem(
+          "opt" + "ions",
+          JSON.stringify(vanillaOpts)
+        );
+      }
+    }
+  } catch (_) {}
   Symbol_I0$w5g$ea98b_Opt = document.getElementById("canvas");
   nh6XVqea98c_Cb = document.getElementById("minimap-canvas");
   IMPORT_f936f76C_ea98d_lte = nh6XVqea98c_Cb.getContext("2d");
@@ -5744,6 +6099,7 @@ async function NeweNPdm() {
     DateN4UN(minimapSmoothFactor, AxisLockThreshold[0]);
   });
   const combinedInterpSpeed = () => {
+    __rxIgnoreNextEnterKeyup = false;
     if (ObjectueAUtq) {
       ObjectueAUtq = false;
       (If$sEyzqKbhea93f_Exec.enabled
@@ -5751,10 +6107,22 @@ async function NeweNPdm() {
         : Str_NmyJ4kX
       ).sendPacket(VoidGBYH.sendEjectMass(false));
     }
+    if (CLASS_3Ft) {
+      CLASS_3Ft = false;
+      const active = faCUfKea9fb_add();
+      const multi =
+        active === If$sEyzqKbhea93f_Exec
+          ? Str_NmyJ4kX
+          : If$sEyzqKbhea93f_Exec;
+      if (multi) {
+        multi._multiEjectHeld = false;
+        multi.sendPacket(VoidGBYH.sendEjectMass(false));
+      }
+    }
   };
   window.onmousemove = AxisLockThreshold;
-  window.onmousedown = minimapSmoothFactor;
-  window.onmouseup = drawMinimapInterval;
+  window.addEventListener("mousedown", minimapSmoothFactor, true);
+  window.addEventListener("mouseup", drawMinimapInterval, true);
   window.onwheel = baseCellSize;
   window.onkeydown = combinedCameraDistanceThreshold;
   window.onkeyup = combinedZoomFocusStrength;
@@ -5763,7 +6131,19 @@ async function NeweNPdm() {
     "contextmenu",
     Object$kDcGWUY((...AxisLockThreshold) => {
       AxisLockThreshold.length = 1;
-      return AxisLockThreshold[0].preventDefault();
+      const e = AxisLockThreshold[0];
+      e.preventDefault();
+      if (
+        CoKB.kContextMenu === 3 &&
+        !Kb5zM5ea951_neq &&
+        !jQueryLzNd.isOpen("mainModal") &&
+        performance.now() - (window.__rxCtxMenuLastTriggerAt || 0) > 120 &&
+        !e.target?.closest?.(
+          "#chat-panel, #emotePanel, #autocomplete-popout, #mainModal, .rx-scrollbar, .party-row"
+        )
+      ) {
+        Catch$HaPx87ea9df_ret(e);
+      }
     })
   );
   $(window).resize(Get_xynDv5x);
@@ -5924,6 +6304,7 @@ async function NeweNPdm() {
     );
   Get_xynDv5x();
   qKCwea9bc_div();
+  initShiftScrollbars();
   TruejJBgB31q(
     JSON.parse(localStorage.getItem("rx_options"))?.cameraMode || "cameraDefault"
   );
@@ -5967,6 +6348,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
       Await_IJIz2M("eu");
       $(".main-right").css("height", "" + XHReYHH$ea9c2_bool() + "px");
     }
+    do_QEm141();
   });
   $("#name-box, #name-box2").on("input", function () {
     do_QEm141(true);
@@ -6073,9 +6455,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
   $("#specBtn").on("click", function () {
     If$sEyzqKbhea93f_Exec.spec();
   });
-  $("#btnModalGotaRedux").on("click", () => {
-    jQueryLzNd.open("aboutModal");
-  });
+
   $("[data-close-modal]").on("click", function () {
     const AxisLockThreshold = $(this).closest(".modal-overlay").attr("id");
     jQueryLzNd.close(AxisLockThreshold);
@@ -6194,12 +6574,6 @@ function qKCwea9bc_div(...AxisLockThreshold) {
           CtxBk7q_("");
         }
         return;
-      }
-      if (combinedZoomFocusStrength === 13 && baseCellSize) {
-        in_Lv7rr7N($(this).val());
-        setTimeout(() => {
-          $("#chat-input").blur();
-        }, 2);
       }
       if (combinedCameraDistanceThreshold || combinedZoomFocusStrength === 13) {
         combinedInterpSpeed.open = false;
@@ -6372,6 +6746,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
     );
     $("#animationDelay").val(Mao5huZea938_run.rAnimationDelay);
     $("#rAnimationDelay").val(Mao5huZea938_run.rAnimationDelay);
+    do_QEm141();
   });
   $("#camDelay").on("change", function () {
     var AxisLockThreshold = parseInt($(this).val());
@@ -6381,6 +6756,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
     Mao5huZea938_run.rCamDelay = Math.min(Math.max(AxisLockThreshold, 50), 200);
     $("#camDelay").val(Mao5huZea938_run.rCamDelay);
     $("#rCamDelay").val(Mao5huZea938_run.rCamDelay);
+    do_QEm141();
   });
   $("#textOutlines").on("change", function () {
     var AxisLockThreshold = parseInt($(this).val());
@@ -6393,9 +6769,11 @@ function qKCwea9bc_div(...AxisLockThreshold) {
     );
     $("#textOutlines").val(Mao5huZea938_run.rTextOutlines);
     $("#rTextOutlines").val(Mao5huZea938_run.rTextOutlines);
+    Dom34uUv8$ea9b1_bool.invalidateCache();
+    do_QEm141();
   });
   $("#combinedViewportScale").on("change", function () {
-    var AxisLockThreshold = parseInt($(this).val());
+    var AxisLockThreshold = parseFloat($(this).val());
     if (isNaN(AxisLockThreshold)) {
       AxisLockThreshold = 0.8;
     }
@@ -6405,6 +6783,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
     );
     $("#combinedViewportScale").val(Mao5huZea938_run.rCombinedViewportScale);
     $("#rCombinedViewportScale").val(Mao5huZea938_run.rCombinedViewportScale);
+    do_QEm141();
   });
   $("#viewDistance").on("change", function () {
     var AxisLockThreshold = parseInt($(this).val());
@@ -6419,6 +6798,7 @@ function qKCwea9bc_div(...AxisLockThreshold) {
     $("#rViewDistance").val(Mao5huZea938_run.rViewDistance);
     If$sEyzqKbhea93f_Exec.sendOptions();
     Str_NmyJ4kX.sendOptions();
+    do_QEm141();
   });
   $("#emotePanel img").on(
     "click",
@@ -7415,11 +7795,32 @@ function qKCwea9bc_div(...AxisLockThreshold) {
         );
     })
   );
+  $("#chat-input").on("mousedown", function () {
+    if (!this.disabled) {
+      this.focus();
+      this.shadowRoot?.querySelector("input")?.focus();
+    }
+  });
   $(document).on(
     "keyup",
     Object$kDcGWUY((...AxisLockThreshold) => {
       AxisLockThreshold.length = 1;
       if (AxisLockThreshold[0].key !== "Enter") {
+        return;
+      }
+      if (__rxIgnoreNextEnterKeyup) {
+        __rxIgnoreNextEnterKeyup = false;
+        return;
+      }
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        activeEl.id !== "chat-input" &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "NORD-INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.isContentEditable)
+      ) {
         return;
       }
       const minimapSmoothFactor = document.getElementById("chat-input");
@@ -7849,10 +8250,33 @@ function Yz5NCU3(...AxisLockThreshold) {
   }
 }
 function FNmsM(...AxisLockThreshold) {
-  AxisLockThreshold[-83] = CoKB[AxisLockThreshold[0].attr("id")];
-  AxisLockThreshold[0].html(
-    El_adcGQ944ea99d_Cb.get(AxisLockThreshold[-83])?.toUpperCase() || "\xA0"
-  );
+  const btn = AxisLockThreshold[0];
+  if (!btn || !btn.length) return;
+  const id = btn.attr("id");
+  const keyVal = CoKB[id];
+  btn.text(El_adcGQ944ea99d_Cb.get(keyVal)?.toUpperCase() || "\u00A0");
+  let unbindBtn = btn.prev(".keybind-unbind-btn");
+  if (!unbindBtn.length) {
+    unbindBtn = $(
+      '<button type="button" class="keybind-unbind-btn" title="Reset bind">Reset</button>'
+    );
+    unbindBtn.on("mousedown", (e) => {
+      e.stopPropagation();
+    });
+    unbindBtn.on("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      Kb5zM5ea951_neq = false;
+      $(".keybinds-btn").removeAttr("variant").prop("disabled", false);
+      CoKB[id] = -1;
+      FNmsM(btn);
+      UtilQlOY_eaa0f_cb();
+      const label = btn.closest(".optionItem").children("div").first().text();
+      PzLTVea9d7_res("Cleared '" + label + "'");
+    });
+    btn.before(unbindBtn);
+  }
+  unbindBtn.toggleClass("is-empty", keyVal == null || keyVal === -1);
 }
 function OlzBkmea9c1_idx(...AxisLockThreshold) {
   $("#servers-eu, #servers-na").empty();
@@ -8013,24 +8437,17 @@ function DEFAULT_B6Cea9c5_Ret(...AxisLockThreshold) {
 }
 function Proto$L05X_ea9c6_sub(...AxisLockThreshold) {
   AxisLockThreshold.length = 0;
-  const minimapSmoothFactor = faCUfKea9fb_add();
-  const drawMinimapInterval =
-    minimapSmoothFactor && minimapSmoothFactor.isConnected();
-  if (drawMinimapInterval && !jQueryLzNd.isOpen("mainModal")) {
+  if (jQueryLzNd.isOpen("mainModal")) {
+    $(".titlebar").hide();
+  } else {
     $(".titlebar").css({
+      display: "flex",
       ["background-color"]: "transparent",
       ["border-color"]: "transparent",
     });
-    $(".titlebar .title").css("margin-left", "-133px");
-    $("nord-notification-group").css("margin-top", "0");
-  } else {
-    $(".titlebar").css({
-      ["background-color"]: "var(--n-color-background)",
-      ["border-color"]: "var(--n-color-border)",
-    });
     $(".titlebar .title").css("margin-left", "0");
-    $("nord-notification-group").css("margin-top", "34px");
   }
+  $("nord-notification-group").css("margin-top", "0");
 }
 function H3Pgbhg(...AxisLockThreshold) {
   if (!Mao5huZea938_run.cShowCoordinates) {
@@ -8505,7 +8922,7 @@ function finally_qFsWFdtea9d1_Ctx(
   const messageColors = faCUfKea9fb_add();
   const MESSAGE_TYPES = $(djUgiSea98e_Fn);
   const CellVisibility = $("#context-name");
-  const MassDisplayType = minimapSmoothFactor.includes("🤖");
+  const MassDisplayType = String(minimapSmoothFactor || "").includes("🤖");
   const SKIN_LOAD_STATUS = messageColors.playerId === drawMinimapInterval;
   const PlayerState = messageColors.party.some(
     Object$kDcGWUY((...AxisLockThreshold) => {
@@ -8529,7 +8946,9 @@ function finally_qFsWFdtea9d1_Ctx(
     "" +
       defaultSubPanelSettings +
       '<span style="margin: 0 5px">' +
-      (MassDisplayType ? "🤖" : minimapSmoothFactor || "An unnamed cell") +
+      (MassDisplayType
+        ? '<img src="images/bot.png" alt="Bot" style="width:28px;height:28px;vertical-align:middle;object-fit:contain;">'
+        : minimapSmoothFactor || "An unnamed cell") +
       "</span>"
   );
   MESSAGE_TYPES.data("selected", drawMinimapInterval)
@@ -8604,6 +9023,9 @@ function NaN_semFS17(...AxisLockThreshold) {
   }
 }
 function do_QEm141(...AxisLockThreshold) {
+  if (!window.__rxOptionsLoaded && !AxisLockThreshold[0]) {
+    return;
+  }
   try {
     const minimapSmoothFactor =
       document.getElementById("name-box")?.value || "";
@@ -8805,6 +9227,17 @@ function Zqf9Dh(...AxisLockThreshold) {
     if (combinedCameraDistanceThreshold) {
       Object.assign(CoKB, JSON.parse(combinedCameraDistanceThreshold));
     }
+    if (CoKB.kContextMenu != null && CoKB.kContextMenu > 0) {
+      for (const otherId in CoKB) {
+        if (
+          otherId !== "kContextMenu" &&
+          Object.prototype.hasOwnProperty.call(CoKB, otherId) &&
+          CoKB[otherId] === CoKB.kContextMenu
+        ) {
+          CoKB[otherId] = -1;
+        }
+      }
+    }
   } catch (combinedZoomFocusStrength) {
     console.error(
       "Error loading keybinds from localStorage:",
@@ -8938,6 +9371,18 @@ function dNwVcfi$ea9d8_type(...AxisLockThreshold) {
   }
   const minimapSmoothFactor = AxisLockThreshold[-244].attr("id");
   CoKB[minimapSmoothFactor] = AxisLockThreshold.c;
+  if (AxisLockThreshold.c > 0) {
+    for (const otherId in CoKB) {
+      if (
+        otherId !== minimapSmoothFactor &&
+        Object.prototype.hasOwnProperty.call(CoKB, otherId) &&
+        CoKB[otherId] === AxisLockThreshold.c
+      ) {
+        CoKB[otherId] = -1;
+        FNmsM($("#" + otherId));
+      }
+    }
+  }
   FNmsM(AxisLockThreshold[-244]);
   UtilQlOY_eaa0f_cb();
   const drawMinimapInterval =
@@ -9196,7 +9641,7 @@ function Ctx_aylk4EOu(AxisLockThreshold = true) {
       $("#leaveParty").css("display", "none");
     }
     if (Mao5huZea938_run.cHideChat) {
-      $(".chat-panel").css("display", "none");
+      $("#chat-panel").css("display", "none");
     }
     if (Mao5huZea938_run.cHideMinimap) {
       $("#minimap-panel").css("display", "none");
@@ -9254,7 +9699,7 @@ function HandlerR0b5TLt$() {
     AxisLockThreshold();
   } else {
     Logger.info("Game loop started with setInterval (FPS uncapped).");
-    HandlerbspL = setInterval(True$wzFjm$ea9f2_TYPE, 8);
+    HandlerbspL = setInterval(True$wzFjm$ea9f2_TYPE, 4);
   }
 }
 async function True$wzFjm$ea9f2_TYPE() {
@@ -9265,46 +9710,6 @@ async function True$wzFjm$ea9f2_TYPE() {
     return;
   }
   const AxisLockThreshold = performance.now();
-  const rxPerf = window.__rxPerf;
-  if (rxPerf) {
-    rxPerf.loopFrames++;
-    if (rxPerf.loopLastTs) {
-      const rxGap = AxisLockThreshold - rxPerf.loopLastTs;
-      if (rxGap > rxPerf.maxGap) {
-        rxPerf.maxGap = Math.round(rxGap);
-      }
-    }
-    rxPerf.loopLastTs = AxisLockThreshold;
-    if (!rxPerf.loopFpsTs) {
-      rxPerf.loopFpsTs = AxisLockThreshold;
-    }
-    if (AxisLockThreshold - rxPerf.loopFpsTs >= 1000) {
-      rxPerf.fps = Math.round(
-        (rxPerf.loopFrames * 1000) / (AxisLockThreshold - rxPerf.loopFpsTs)
-      );
-      rxPerf.loopFrames = 0;
-      rxPerf.loopFpsTs = AxisLockThreshold;
-    }
-    if (AxisLockThreshold - rxPerf.logTs > 10000) {
-      rxPerf.logTs = AxisLockThreshold;
-      console.log(
-        "[rx-perf] fps=" +
-          rxPerf.fps +
-          " maxGap=" +
-          rxPerf.maxGap +
-          "ms splitMs=" +
-          rxPerf.lastSplitMs +
-          " applied=" +
-          rxPerf.splitApplied +
-          " missed=" +
-          rxPerf.splitMissed +
-          " heapMB=" +
-          (performance.memory
-            ? Math.round(performance.memory.usedJSHeapSize / 1048576)
-            : "?")
-      );
-    }
-  }
   const minimapSmoothFactor = AxisLockThreshold - JcVea978_neq;
   const baseCellSize = 250;
   let combinedCameraDistanceThreshold = false;
@@ -9332,7 +9737,6 @@ async function True$wzFjm$ea9f2_TYPE() {
     ) {
       if (!El_jtxnG4q) {
         El_jtxnG4q = true;
-        /* unstable overlay disabled */
       }
     } else if (El_jtxnG4q) {
       El_jtxnG4q = false;
@@ -9427,8 +9831,8 @@ async function True$wzFjm$ea9f2_TYPE() {
   const capitalize = bXFgW$Qq.pivot.x + writeAscii + 50;
   const findServerByName = bXFgW$Qq.pivot.y - writeUtf16 - 50;
   const formatAliveTime = bXFgW$Qq.pivot.y + writeUtf16 + 50;
-  for (const rxCellEntry of jQuery_hn$0_2t_ea9b2_sub.cells.values()) {
-    const formatExperience = rxCellEntry.cell;
+  for (const entry of jQuery_hn$0_2t_ea9b2_sub.cells.values()) {
+    const formatExperience = entry.cell;
     formatExperience.interpolateState(
       combinedInterpSpeed,
       combinedCameraDistanceThreshold
@@ -9480,8 +9884,6 @@ async function True$wzFjm$ea9f2_TYPE() {
     Str_NmyJ4kX.calculatedMouseX = defaultTheme;
     Str_NmyJ4kX.calculatedMouseY = SERVER_PORT;
   }
-  defaultKeyMappings.calculatedMouseX = defaultTheme;
-  defaultKeyMappings.calculatedMouseY = SERVER_PORT;
   if (
     defaultKeyMappings.isConnected() &&
     !jQueryLzNd.isOpen("mainModal") &&
@@ -9493,19 +9895,7 @@ async function True$wzFjm$ea9f2_TYPE() {
       SERVER_PORT,
       combinedInterpSpeed
     );
-    const VuerW6rI_ea93a_neq = Pto5ea937_Inst - ReactFCGxs$ea96c_Tmp;
-    const DEFAULT$HB0T_ea93b_Status = CoKB - CTXgGGYfuSi_ea96d_Opt;
-    if (
-      VuerW6rI_ea93a_neq * VuerW6rI_ea93a_neq +
-        DEFAULT$HB0T_ea93b_Status * DEFAULT$HB0T_ea93b_Status >
-      25
-    ) {
-      defaultKeyMappings.lastSentMouseX = Pto5ea937_Inst;
-      defaultKeyMappings.lastSentMouseY = CoKB;
-      defaultKeyMappings.sendPacket(VoidGBYH.sendMouse(Pto5ea937_Inst, CoKB));
-      ReactFCGxs$ea96c_Tmp = Pto5ea937_Inst;
-      CTXgGGYfuSi_ea96d_Opt = CoKB;
-    }
+    defaultKeyMappings.sendMouseThrottled(Pto5ea937_Inst, CoKB);
   }
   if (
     ObjectueAUtq &&
@@ -9943,7 +10333,7 @@ function faCUfKea9fb_add(...AxisLockThreshold) {
       : null
     : null;
   AxisLockThreshold.a = null;
-  if (If$sEyzqKbhea93f_Exec.enabled === true) {
+  if (If$sEyzqKbhea93f_Exec?.enabled === true) {
     AxisLockThreshold.a = If$sEyzqKbhea93f_Exec;
     window.sharedData = {
       player1: true,
@@ -9952,7 +10342,7 @@ function faCUfKea9fb_add(...AxisLockThreshold) {
         ? Promise_28_SVO_ea950_fn.mouseFrozenDiv2.style.display
         : "none",
     };
-  } else if (Str_NmyJ4kX.enabled === true) {
+  } else if (Str_NmyJ4kX?.enabled === true) {
     AxisLockThreshold.a = Str_NmyJ4kX;
     window.sharedData = {
       player1: false,
@@ -9991,6 +10381,7 @@ function ForKgjVzrQea9fc_Status(...AxisLockThreshold) {
     return;
   }
   zd8T_jfeea9b6_and.deactivate();
+  VJjDr.stopLinesplit(minimapSmoothFactor);
   if (If$sEyzqKbhea93f_Exec) {
     If$sEyzqKbhea93f_Exec.wasAliveLastTick =
       If$sEyzqKbhea93f_Exec.myCells.size > 0;
@@ -9998,45 +10389,38 @@ function ForKgjVzrQea9fc_Status(...AxisLockThreshold) {
   if (Str_NmyJ4kX) {
     Str_NmyJ4kX.wasAliveLastTick = Str_NmyJ4kX.myCells.size > 0;
   }
-  If$sEyzqKbhea93f_Exec.play();
-  Str_NmyJ4kX.play();
-  for (const stalePlayer of [If$sEyzqKbhea93f_Exec, Str_NmyJ4kX]) {
-    if (!stalePlayer) {
-      continue;
-    }
-    stalePlayer.lastSentMouseX = undefined;
-    stalePlayer.lastSentMouseY = undefined;
+  if (!If$sEyzqKbhea93f_Exec.isConnected() || If$sEyzqKbhea93f_Exec.myCells.size === 0) {
+    If$sEyzqKbhea93f_Exec.play();
   }
-  VJjDr.stopLinesplit(If$sEyzqKbhea93f_Exec);
-  VJjDr.stopLinesplit(Str_NmyJ4kX);
+  if (!Str_NmyJ4kX.isConnected() || Str_NmyJ4kX.myCells.size === 0) {
+    Str_NmyJ4kX.play();
+  }
   if (If$sEyzqKbhea93f_Exec.isConnected() && Str_NmyJ4kX.isConnected()) {
     if (If$sEyzqKbhea93f_Exec.enabled && !Str_NmyJ4kX.enabled) {
       If$sEyzqKbhea93f_Exec.enabled = false;
       Str_NmyJ4kX.enabled = true;
       Str_NmyJ4kX.mouseFrozen = false;
+      Str_NmyJ4kX.sendMouseThrottled(
+        Str_NmyJ4kX.calculatedMouseX,
+        Str_NmyJ4kX.calculatedMouseY,
+        true
+      );
     } else if (!If$sEyzqKbhea93f_Exec.enabled && Str_NmyJ4kX.enabled) {
       Str_NmyJ4kX.enabled = false;
       If$sEyzqKbhea93f_Exec.enabled = true;
       If$sEyzqKbhea93f_Exec.mouseFrozen = false;
+      If$sEyzqKbhea93f_Exec.sendMouseThrottled(
+        If$sEyzqKbhea93f_Exec.calculatedMouseX,
+        If$sEyzqKbhea93f_Exec.calculatedMouseY,
+        true
+      );
     }
-  }
-  const activeAfterSwap = If$sEyzqKbhea93f_Exec.enabled
-    ? If$sEyzqKbhea93f_Exec
-    : Str_NmyJ4kX.enabled
-    ? Str_NmyJ4kX
-    : null;
-  if (activeAfterSwap) {
-    activeAfterSwap.sendMouseToCursor();
   }
   if (ObjectueAUtq) {
     if (If$sEyzqKbhea93f_Exec.enabled) {
-      If$sEyzqKbhea93f_Exec.sendMouseToCursor();
-      Str_NmyJ4kX.sendMouseToCursor();
       If$sEyzqKbhea93f_Exec.sendPacket(VoidGBYH.sendEjectMass(true));
       Str_NmyJ4kX.sendPacket(VoidGBYH.sendEjectMass(false));
     } else if (Str_NmyJ4kX.enabled) {
-      Str_NmyJ4kX.sendMouseToCursor();
-      If$sEyzqKbhea93f_Exec.sendMouseToCursor();
       Str_NmyJ4kX.sendPacket(VoidGBYH.sendEjectMass(true));
       If$sEyzqKbhea93f_Exec.sendPacket(VoidGBYH.sendEjectMass(false));
     }
@@ -10495,6 +10879,7 @@ function FROM$YeJ0i$eaa00_bool(...AxisLockThreshold) {
     AxisLockThreshold.c = "Mouse Cursor";
   }
   Mao5huZea938_run.sFastFeed = AxisLockThreshold.b;
+  do_QEm141();
   BOOLxEFAPea9cf_or("Fast Feed Mode: " + AxisLockThreshold.c);
 }
 function d5OVi(...AxisLockThreshold) {
@@ -10532,11 +10917,10 @@ function Ctx_HHTJdo(...AxisLockThreshold) {
   }
 }
 function If_yEAw_eaa03_Res(...AxisLockThreshold) {
-  const stages = Math.max(1, Math.min(8, Number(AxisLockThreshold[0]) || 1));
-  const minimapSmoothFactor = faCUfKea9fb_add();
-  if (!minimapSmoothFactor) {
+  if (Date.now() < yield_j0ltb_ea9a1_eq) {
     return;
   }
+  const minimapSmoothFactor = faCUfKea9fb_add();
   const drawMinimapInterval =
     minimapSmoothFactor === If$sEyzqKbhea93f_Exec
       ? Str_NmyJ4kX
@@ -10548,24 +10932,10 @@ function If_yEAw_eaa03_Res(...AxisLockThreshold) {
   ) {
     return;
   }
-  const now = performance.now();
-  if (now - (minimapSmoothFactor._lastMultiAction || 0) < 10) {
-    return;
-  }
-  minimapSmoothFactor._lastMultiAction = now;
-  let mx = 0;
-  let my = 0;
-  if (Cd8Hiea95a_Init === "followMouseSCell") {
+  if (AxisLockThreshold[0] === 8) {
     if (minimapSmoothFactor.myCells.size === 0) {
       return;
     }
-    for (const combinedCameraDistanceThreshold of minimapSmoothFactor.myCells.values()) {
-      mx += combinedCameraDistanceThreshold.x;
-      my += combinedCameraDistanceThreshold.y;
-    }
-    mx /= minimapSmoothFactor.myCells.size;
-    my /= minimapSmoothFactor.myCells.size;
-  } else if (stages === 8) {
     let baseCellSize = null;
     for (const combinedCameraDistanceThreshold of minimapSmoothFactor.myCells.values()) {
       if (
@@ -10575,29 +10945,50 @@ function If_yEAw_eaa03_Res(...AxisLockThreshold) {
         baseCellSize = combinedCameraDistanceThreshold;
       }
     }
-    if (!baseCellSize) {
+    if (baseCellSize) {
+      const tx = Math.round(baseCellSize.x);
+      const ty = Math.round(baseCellSize.y);
+      drawMinimapInterval.lastSentMouseX = tx;
+      drawMinimapInterval.lastSentMouseY = ty;
+      drawMinimapInterval.sendPacket(VoidGBYH.sendMouse(tx, ty));
+      drawMinimapInterval.sendPacket(VoidGBYH.sendSplitPacket(tx, ty, 8));
+      yield_j0ltb_ea9a1_eq = Date.now() + 1;
+    }
+    return;
+  }
+  if (Cd8Hiea95a_Init === "followMouseSCell") {
+    const combinedZoomFocusStrength = minimapSmoothFactor.myCells.size;
+    if (combinedZoomFocusStrength === 0) {
       return;
     }
-    mx = baseCellSize.x;
-    my = baseCellSize.y;
-  } else {
-    [mx, my] = minimapSmoothFactor._cursorTarget();
+    let combinedInterpSpeed = 0;
+    let messageColors = 0;
+    for (const combinedCameraDistanceThreshold of minimapSmoothFactor.myCells.values()) {
+      combinedInterpSpeed += combinedCameraDistanceThreshold.x;
+      messageColors += combinedCameraDistanceThreshold.y;
+    }
+    const MESSAGE_TYPES = combinedInterpSpeed / combinedZoomFocusStrength;
+    const CellVisibility = messageColors / combinedZoomFocusStrength;
+    if (Number.isFinite(MESSAGE_TYPES) && Number.isFinite(CellVisibility)) {
+      const tx = Math.round(MESSAGE_TYPES);
+      const ty = Math.round(CellVisibility);
+      drawMinimapInterval.lastSentMouseX = tx;
+      drawMinimapInterval.lastSentMouseY = ty;
+      drawMinimapInterval.sendPacket(VoidGBYH.sendMouse(tx, ty));
+      drawMinimapInterval.sendPacket(
+        VoidGBYH.sendSplitPacket(tx, ty, AxisLockThreshold[0])
+      );
+      yield_j0ltb_ea9a1_eq = Date.now() + 1;
+    }
+  } else if (typeof drawMinimapInterval.sendSplit === "function") {
+    CLASS_3Ft = true;
+    drawMinimapInterval.sendSplit(AxisLockThreshold[0]).then(() => {
+      if (!drawMinimapInterval._multiEjectHeld) {
+        CLASS_3Ft = false;
+      }
+    });
+    yield_j0ltb_ea9a1_eq = Date.now() + 1;
   }
-  CLASS_3Ft = true;
-  drawMinimapInterval.lastSentMouseX = mx;
-  drawMinimapInterval.lastSentMouseY = my;
-  const burstSplitPacket = VoidGBYH.sendSplitPacket(mx, my, 1);
-  const burstPackets = [VoidGBYH.sendMouse(mx, my)];
-  for (let stage = 0; stage < stages; stage++) {
-    burstPackets.push(burstSplitPacket);
-  }
-  drawMinimapInterval.sendPackets(burstPackets);
-  const rtt = Number.isFinite(drawMinimapInterval.rtt)
-    ? drawMinimapInterval.rtt
-    : 50;
-  setTimeout(() => {
-    CLASS_3Ft = false;
-  }, Math.min(200, Math.max(0, rtt)) + 15);
 }
 function React_a3eebzUUeaa04(...AxisLockThreshold) {
   const minimapSmoothFactor = faCUfKea9fb_add();
@@ -10657,6 +11048,9 @@ function rCRuBeaa05_res(...AxisLockThreshold) {
     AxisLockThreshold[2] === If$sEyzqKbhea93f_Exec
       ? Str_NmyJ4kX
       : If$sEyzqKbhea93f_Exec;
+  if (!AxisLockThreshold[2] || !AxisLockThreshold[58]?.isConnected()) {
+    return;
+  }
   if (Mao5huZea938_run.soloMothership) {
     if (
       !AxisLockThreshold[58].mouseFrozen &&
@@ -10664,11 +11058,12 @@ function rCRuBeaa05_res(...AxisLockThreshold) {
       !Mao5huZea938_run.mouseFollow
     ) {
       const minimapSmoothFactor =
-        AxisLockThreshold[2].calculatedMouseX || AxisLockThreshold[0];
+        AxisLockThreshold[2].calculatedMouseX ?? AxisLockThreshold[0];
       const drawMinimapInterval =
-        AxisLockThreshold[2].calculatedMouseY || AxisLockThreshold[1];
-      AxisLockThreshold[58].sendPacket(
-        VoidGBYH.sendMouse(minimapSmoothFactor, drawMinimapInterval)
+        AxisLockThreshold[2].calculatedMouseY ?? AxisLockThreshold[1];
+      AxisLockThreshold[58].sendMouseThrottled(
+        minimapSmoothFactor,
+        drawMinimapInterval
       );
     }
     if (in_hpdqea943_div) {
@@ -10692,25 +11087,35 @@ function This_GCC(...AxisLockThreshold) {
     AxisLockThreshold.a === If$sEyzqKbhea93f_Exec
       ? Str_NmyJ4kX
       : If$sEyzqKbhea93f_Exec;
+  if (
+    !AxisLockThreshold.a ||
+    !AxisLockThreshold[3] ||
+    !AxisLockThreshold[3].isConnected() ||
+    jQueryLzNd.isOpen("mainModal")
+  ) {
+    return;
+  }
   if (Mao5huZea938_run.mouseFollow) {
     if (Cd8Hiea95a_Init === "followMouseAlways") {
       if (!AxisLockThreshold[3].mouseFrozen) {
         const minimapSmoothFactor =
-          AxisLockThreshold.a.calculatedMouseX || AxisLockThreshold[0];
+          AxisLockThreshold.a.calculatedMouseX ?? AxisLockThreshold[0];
         const drawMinimapInterval =
-          AxisLockThreshold.a.calculatedMouseY || AxisLockThreshold[1];
-        AxisLockThreshold[3].sendPacket(
-          VoidGBYH.sendMouse(minimapSmoothFactor, drawMinimapInterval)
+          AxisLockThreshold.a.calculatedMouseY ?? AxisLockThreshold[1];
+        AxisLockThreshold[3].sendMouseThrottled(
+          minimapSmoothFactor,
+          drawMinimapInterval
         );
       }
     } else if (Cd8Hiea95a_Init === "followMouseMacros" && CLASS_3Ft) {
       if (!AxisLockThreshold[3].mouseFrozen) {
         const minimapSmoothFactor =
-          AxisLockThreshold.a.calculatedMouseX || AxisLockThreshold[0];
+          AxisLockThreshold.a.calculatedMouseX ?? AxisLockThreshold[0];
         const drawMinimapInterval =
-          AxisLockThreshold.a.calculatedMouseY || AxisLockThreshold[1];
-        AxisLockThreshold[3].sendPacket(
-          VoidGBYH.sendMouse(minimapSmoothFactor, drawMinimapInterval)
+          AxisLockThreshold.a.calculatedMouseY ?? AxisLockThreshold[1];
+        AxisLockThreshold[3].sendMouseThrottled(
+          minimapSmoothFactor,
+          drawMinimapInterval
         );
       }
     } else if (Cd8Hiea95a_Init === "followMouseSCell" && CLASS_3Ft) {
@@ -10728,8 +11133,9 @@ function This_GCC(...AxisLockThreshold) {
             combinedZoomFocusStrength / combinedCameraDistanceThreshold;
           const drawMinimapInterval =
             combinedInterpSpeed / combinedCameraDistanceThreshold;
-          AxisLockThreshold[3].sendPacket(
-            VoidGBYH.sendMouse(minimapSmoothFactor, drawMinimapInterval)
+          AxisLockThreshold[3].sendMouseThrottled(
+            minimapSmoothFactor,
+            drawMinimapInterval
           );
         }
       }
