@@ -6144,7 +6144,7 @@ async function NeweNPdm() {
       const e = AxisLockThreshold[0];
       e.preventDefault();
       if (
-        (CoKB.kContextMenu === 3 || e instanceof MouseEvent) &&
+        CoKB.kContextMenu === 3 &&
         !Kb5zM5ea951_neq &&
         !jQueryLzNd.isOpen("mainModal") &&
         performance.now() - (window.__rxCtxMenuLastTriggerAt || 0) > 120 &&
