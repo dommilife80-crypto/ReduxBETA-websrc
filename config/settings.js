@@ -96,6 +96,8 @@ export const defaultKeyMappings = {
   k256xSplit: -Await_rIVkJM9bc47[0x5],
   kFreezeMouse: -Await_rIVkJM9bc47[0x5],
   kSwapPlayer: Await_rIVkJM9bc47[0xe],
+  kAutoReverse1X: -Await_rIVkJM9bc47[0x5],
+  kAutoReverse2X: -Await_rIVkJM9bc47[0x5],
   kDiagLine: -Await_rIVkJM9bc47[0x5],
   kCameraMode: -Await_rIVkJM9bc47[0x5],
   kLineSplit: -Await_rIVkJM9bc47[0x5],
