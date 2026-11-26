@@ -122,6 +122,8 @@ export const defaultKeyMappings = {
   kToggleBotFollowMode: -Await_rIVkJM9bc47[0x5],
   kToggleAutoSpectate: -Await_rIVkJM9bc47[0x5],
   kToggleInactiveToActiveSpec: -Await_rIVkJM9bc47[0x5],
+  kRevLock: 0x52,
+  kRevUnlock: 0x52,
 };
 export const defaultSubPanelSettings = {
   nameColor: {
