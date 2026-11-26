@@ -2830,34 +2830,3 @@ nord-notification-group {
   padding-right: 10px;
 }
 
-/* Auto-Rev */
-#rx-autorev-section {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--n-color-border, rgba(255, 255, 255, 0.12));
-  gap: 6px;
-}
-#rx-autorev-section h3 {
-  margin: 0 0 4px;
-}
-#rx-autorev-section #rxRevSplits,
-#rx-autorev-section #rxRevNotifyPos {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 2px;
-  border-radius: 8px;
-}
-#rx-autorev-section #rxRevSplits nord-button,
-#rx-autorev-section #rxRevNotifyPos nord-button {
-  min-width: 34px;
-}
-#rx-autorev-section .rx-rev-notify-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: flex-end;
-}
-#rx-autorev-section .rx-rev-hint {
-  font-size: 11px;
-  opacity: 0.55;
-}
