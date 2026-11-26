@@ -11959,85 +11959,40 @@ function rxRevPaintUI() {
   });
 }
 
-function rxRevMountUI() {
-  const host = document.getElementById("main-hotkeys");
-  if (!host) return;
-  const existing = document.getElementById("rx-autorev-section");
-  if (existing && host.contains(existing)) {
-    rxRevPaintUI();
-    return;
-  }
-  const base = host.querySelector(".options-container");
-  if (!base) return;
-
-  if (!document.getElementById("rx-autorev-style")) {
-    const st = document.createElement("style");
-    st.id = "rx-autorev-style";
-    st.textContent =
-      "#rx-autorev-section{margin-top:10px;padding-top:10px;border-top:1px solid var(--n-color-border,rgba(255,255,255,0.12));gap:6px}" +
-      "#rx-autorev-section h3{margin:0 0 4px}" +
-      "#rx-autorev-section #rxRevSplits,#rx-autorev-section #rxRevNotifyPos{flex-wrap:wrap;justify-content:flex-end;gap:2px;border-radius:8px}" +
-      "#rx-autorev-section #rxRevSplits nord-button,#rx-autorev-section #rxRevNotifyPos nord-button{min-width:34px}" +
-      "#rx-autorev-section .rx-rev-notify-row{display:flex;gap:6px;align-items:center;justify-content:flex-end}";
-    document.head.appendChild(st);
-  }
-
-  const sec = document.createElement("div");
-  sec.className = "options-container";
-  sec.id = "rx-autorev-section";
-  sec.innerHTML = `
-    <h3>Auto-Rev</h3>
-    <div class="optionItem"><div>Lock Target</div><div class="option-control"><nord-button class="keybinds-btn" id="kRevLock"></nord-button></div></div>
-    <div class="optionItem"><div>Cancel Lock</div><div class="option-control"><nord-button class="keybinds-btn" id="kRevUnlock"></nord-button></div></div>
-    <div class="optionItem"><div>Rev Splits</div><div class="option-control"><div class="segmentedControl" id="rxRevSplits">${RX_REV_SPLITS.map(
-      (s, i) =>
-        `<nord-button size="s" variant="plain" data-rxrev-split="${s}">${i + 1}x</nord-button>`,
-    ).join("")}</div></div></div>
-    <div class="optionItem"><div>Rev Notify</div><div class="option-control rx-rev-notify-row">
-      <div class="segmentedControl" id="rxRevNotifyPos">
-        <nord-button size="s" variant="plain" data-rxrev-pos="top">Top</nord-button>
-        <nord-button size="s" variant="plain" data-rxrev-pos="bottom">Bottom</nord-button>
-      </div>
-      <nord-toggle id="rxRevNotify" size="s"></nord-toggle>
-    </div></div>
-    <div style="font-size:11px;opacity:0.55">Lock on the enemy under the cursor. Auto-fires when that cell splits.</div>
-  `;
-  base.appendChild(sec);
-
-  FNmsM($("#kRevLock"));
-  FNmsM($("#kRevUnlock"));
-
-  sec.querySelectorAll("[data-rxrev-split]").forEach((b) => {
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      rxRevSetSplits(Number(b.getAttribute("data-rxrev-split")));
+function rxRevBindUI() {
+  const sec = document.getElementById("rx-autorev-section");
+  if (!sec) return;
+  if (sec.dataset.rxBound !== "1") {
+    sec.dataset.rxBound = "1";
+    sec.querySelectorAll("[data-rxrev-split]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        rxRevSetSplits(Number(b.getAttribute("data-rxrev-split")));
+      });
     });
-  });
-
-  const nt = sec.querySelector("#rxRevNotify");
-  if (nt) {
-    nt.addEventListener("change", () => {
-      const val = Boolean(nt.checked);
-      if (val === Boolean(rxRevSettings.notify)) return;
-      rxRevSettings.notify = val;
-      rxRevSave();
-      rxRevPaintUI();
-      if (val) rxRevToast("Auto-Rev: notifications on");
+    const nt = sec.querySelector("#rxRevNotify");
+    if (nt) {
+      nt.addEventListener("change", () => {
+        const val = Boolean(nt.checked);
+        if (val === Boolean(rxRevSettings.notify)) return;
+        rxRevSettings.notify = val;
+        rxRevSave();
+        rxRevPaintUI();
+        if (val) rxRevToast("Auto-Rev: notifications on");
+      });
+    }
+    sec.querySelectorAll("[data-rxrev-pos]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        rxRevSettings.notifyPos =
+          b.getAttribute("data-rxrev-pos") === "bottom" ? "bottom" : "top";
+        rxRevSave();
+        rxRevPaintUI();
+      });
     });
   }
-
-  sec.querySelectorAll("[data-rxrev-pos]").forEach((b) => {
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      rxRevSettings.notifyPos =
-        b.getAttribute("data-rxrev-pos") === "bottom" ? "bottom" : "top";
-      rxRevSave();
-      rxRevPaintUI();
-    });
-  });
-
   rxRevPaintUI();
 }
 
@@ -12046,10 +12001,9 @@ function rxRevInit() {
   rxRevState.inited = true;
   rxRevLoad();
   rxRevEnsureCanvas();
-  rxRevMountUI();
-  setTimeout(rxRevMountUI, 400);
-  setTimeout(rxRevMountUI, 1200);
-  setTimeout(rxRevMountUI, 3000);
+  rxRevBindUI();
+  setTimeout(rxRevBindUI, 300);
+  setTimeout(rxRevBindUI, 1200);
   setInterval(rxRevTick, 50);
   window.requestAnimationFrame(rxRevLoop);
   document.addEventListener(
@@ -12061,7 +12015,7 @@ function rxRevInit() {
         t.closest &&
         (t.closest("#btnKeybinds") || t.closest("#btnResetKeybinds"))
       ) {
-        setTimeout(rxRevMountUI, 60);
+        setTimeout(rxRevBindUI, 60);
       }
     },
     true
