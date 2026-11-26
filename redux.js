@@ -5564,8 +5564,7 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
       break;
     case CoKB.kContextMenu:
       if (!AxisLockThreshold[1]?.repeat) {
-        AxisLockThreshold[1]?.preventDefault?.();
-        Catch$HaPx87ea9df_ret();
+        Catch$HaPx87ea9df_ret(AxisLockThreshold[1]);
       }
       break;
     case CoKB.kToggleSpec:
@@ -9227,17 +9226,6 @@ function Zqf9Dh(...AxisLockThreshold) {
     if (combinedCameraDistanceThreshold) {
       Object.assign(CoKB, JSON.parse(combinedCameraDistanceThreshold));
     }
-    if (CoKB.kContextMenu != null && CoKB.kContextMenu > 0) {
-      for (const otherId in CoKB) {
-        if (
-          otherId !== "kContextMenu" &&
-          Object.prototype.hasOwnProperty.call(CoKB, otherId) &&
-          CoKB[otherId] === CoKB.kContextMenu
-        ) {
-          CoKB[otherId] = -1;
-        }
-      }
-    }
   } catch (combinedZoomFocusStrength) {
     console.error(
       "Error loading keybinds from localStorage:",
@@ -9371,18 +9359,6 @@ function dNwVcfi$ea9d8_type(...AxisLockThreshold) {
   }
   const minimapSmoothFactor = AxisLockThreshold[-244].attr("id");
   CoKB[minimapSmoothFactor] = AxisLockThreshold.c;
-  if (AxisLockThreshold.c > 0) {
-    for (const otherId in CoKB) {
-      if (
-        otherId !== minimapSmoothFactor &&
-        Object.prototype.hasOwnProperty.call(CoKB, otherId) &&
-        CoKB[otherId] === AxisLockThreshold.c
-      ) {
-        CoKB[otherId] = -1;
-        FNmsM($("#" + otherId));
-      }
-    }
-  }
   FNmsM(AxisLockThreshold[-244]);
   UtilQlOY_eaa0f_cb();
   const drawMinimapInterval =
