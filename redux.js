@@ -5394,6 +5394,17 @@ function Str_MMr1pN24$ea9b9_not(...AxisLockThreshold) {
   ) {
     in_hpdqea943_div = true;
   }
+  if (
+    AxisLockThreshold[0] !== -1 &&
+    AxisLockThreshold[0] === CoKB.kContextMenu &&
+    !AxisLockThreshold[1]?.repeat
+  ) {
+    const __rxCtxEvt = AxisLockThreshold[1];
+    const __rxCtxIsMouse =
+      typeof MouseEvent !== "undefined" && __rxCtxEvt instanceof MouseEvent;
+    Catch$HaPx87ea9df_ret(__rxCtxIsMouse ? __rxCtxEvt : undefined);
+    return;
+  }
   switch (AxisLockThreshold[0]) {
     case CoKB.kSwapPlayer:
       if (!AxisLockThreshold[1]?.repeat) {
@@ -6133,7 +6144,7 @@ async function NeweNPdm() {
       const e = AxisLockThreshold[0];
       e.preventDefault();
       if (
-        CoKB.kContextMenu === 3 &&
+        (CoKB.kContextMenu === 3 || e instanceof MouseEvent) &&
         !Kb5zM5ea951_neq &&
         !jQueryLzNd.isOpen("mainModal") &&
         performance.now() - (window.__rxCtxMenuLastTriggerAt || 0) > 120 &&
